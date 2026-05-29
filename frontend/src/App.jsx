@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import ProxyHostList from './components/ProxyHostList.jsx'
 import ProxyHostForm from './components/ProxyHostForm.jsx'
 import ConfirmModal from './components/ConfirmModal.jsx'
-import ConfigEditor from './components/ConfigEditor.jsx'
+
+const ConfigEditor = lazy(() => import('./components/ConfigEditor.jsx'))
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -16,6 +17,7 @@ export default function App() {
   const [warning, setWarning] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editingHost, setEditingHost] = useState(null)
+  const [rawConf, setRawConf] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [pendingReload, setPendingReload] = useState(false)
   const [toast, setToast] = useState(null)
@@ -102,6 +104,18 @@ export default function App() {
     const res = await fetch(`${API}/api/proxy-hosts/${host.name}`)
     if (res.ok) {
       setEditingHost(await res.json())
+      setRawConf(null)
+      setFormOpen(true)
+    }
+  }
+
+  const openOnboard = async (host) => {
+    const res = await fetch(`${API}/api/proxy-hosts/${host.name}/parse`)
+    if (res.ok) {
+      const data = await res.json()
+      const { raw_conf, ...parsed } = data
+      setEditingHost(parsed)
+      setRawConf(raw_conf)
       setFormOpen(true)
     }
   }
@@ -191,7 +205,7 @@ export default function App() {
                 <h1 className="page-title">Proxy Hosts</h1>
                 <p className="page-subtitle">Manage nginx reverse proxy configurations</p>
               </div>
-              <button className="btn btn-primary" onClick={() => { setEditingHost(null); setFormOpen(true) }}>
+              <button className="btn btn-primary" onClick={() => { setEditingHost(null); setRawConf(null); setFormOpen(true) }}>
                 + Add Proxy Host
               </button>
             </header>
@@ -205,6 +219,7 @@ export default function App() {
                 hosts={hosts}
                 loading={loading}
                 onEdit={openEdit}
+                onOnboard={openOnboard}
                 onToggle={handleToggle}
                 onDelete={name => setDeleteTarget(name)}
               />
@@ -220,7 +235,9 @@ export default function App() {
                 <p className="page-subtitle">Edit nginx.conf, proxy.conf, resolver.conf and ssl.conf</p>
               </div>
             </header>
-            <ConfigEditor onDirty={setConfigDirty} />
+            <Suspense fallback={<div className="loading-state">Loading editor...</div>}>
+              <ConfigEditor onDirty={setConfigDirty} />
+            </Suspense>
           </>
         )}
       </main>
@@ -228,8 +245,9 @@ export default function App() {
       {formOpen && (
         <ProxyHostForm
           initial={editingHost}
+          rawConf={rawConf}
           onSave={handleSave}
-          onClose={() => { setFormOpen(false); setEditingHost(null) }}
+          onClose={() => { setFormOpen(false); setEditingHost(null); setRawConf(null) }}
         />
       )}
 

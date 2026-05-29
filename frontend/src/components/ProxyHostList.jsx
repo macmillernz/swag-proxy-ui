@@ -1,4 +1,4 @@
-export default function ProxyHostList({ hosts, loading, onEdit, onToggle, onDelete }) {
+export default function ProxyHostList({ hosts, loading, onEdit, onToggle, onDelete, onOnboard }) {
   if (loading) {
     return <div className="loading-state">Loading proxy hosts...</div>
   }
@@ -15,7 +15,7 @@ export default function ProxyHostList({ hosts, loading, onEdit, onToggle, onDele
   return (
     <div className="host-grid">
       {hosts.map(host => (
-        <div key={host.name} className={`host-card ${host.enabled ? '' : 'disabled'}`}>
+        <div key={host.name} className={`host-card ${host.enabled ? '' : 'disabled'} ${!host.managed ? 'unmanaged' : ''}`}>
           <div className="host-card-header">
             <div className="host-name-row">
               <h3 className="host-name">{host.name}</h3>
@@ -25,20 +25,29 @@ export default function ProxyHostList({ hosts, loading, onEdit, onToggle, onDele
             <div className={`status-dot ${host.enabled ? 'active' : 'inactive'}`} title={host.enabled ? 'Enabled' : 'Disabled'} />
           </div>
 
-          {host.managed && (
+          {host.managed ? (
             <div className="host-details">
               <span className="host-upstream">
                 {host.upstream_proto}://{host.upstream_host}:{host.upstream_port}
               </span>
               {host.websocket && <span className="badge badge-ws">WS</span>}
+              {host.allow_ips?.length > 0 && (
+                <span className="badge badge-acl" title={host.allow_ips.join(', ')}>
+                  ACL ({host.allow_ips.length})
+                </span>
+              )}
             </div>
+          ) : (
+            <p className="unmanaged-hint">
+              Existing conf — click Onboard to manage it here.
+            </p>
           )}
 
           <div className="host-actions">
-            {host.managed && (
-              <button className="btn btn-sm btn-ghost" onClick={() => onEdit(host)}>
-                Edit
-              </button>
+            {host.managed ? (
+              <button className="btn btn-sm btn-ghost" onClick={() => onEdit(host)}>Edit</button>
+            ) : (
+              <button className="btn btn-sm btn-primary" onClick={() => onOnboard(host)}>Onboard</button>
             )}
             <button
               className={`btn btn-sm ${host.enabled ? 'btn-warning' : 'btn-success'}`}

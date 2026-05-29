@@ -268,6 +268,38 @@ def toggle_proxy_host(name: str):
     return {"name": name, "enabled": not enabled}
 
 
+@app.get("/api/proxy-hosts/{name}/parse")
+def parse_unmanaged_conf(name: str):
+    """Extract structured settings from an unmanaged conf file for onboarding."""
+    result = find_conf_file(name)
+    if not result:
+        raise HTTPException(404, detail=f"Proxy host '{name}' not found")
+    path, enabled, type_ = result
+
+    content = path.read_text()
+
+    import re
+
+    def search(pattern, default=None):
+        m = re.search(pattern, content)
+        return m.group(1) if m else default
+
+    return {
+        "name": name,
+        "type": type_,
+        "enabled": enabled,
+        "upstream_host": search(r"set \$upstream_app\s+(\S+);", ""),
+        "upstream_port": int(search(r"set \$upstream_port\s+(\d+);", "80")),
+        "upstream_proto": search(r"set \$upstream_proto\s+(https?);", "http"),
+        "websocket": bool(re.search(r"proxy_set_header\s+Upgrade", content, re.IGNORECASE)),
+        "client_max_body_size": search(r"client_max_body_size\s+(\S+);", "0"),
+        "allow_ips": [],
+        "extra_locations": [],
+        "custom_location": None,
+        "raw_conf": content,
+    }
+
+
 @app.get("/api/proxy-hosts/{name}/conf")
 def get_conf_content(name: str):
     result = find_conf_file(name)

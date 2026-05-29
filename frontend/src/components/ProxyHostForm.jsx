@@ -140,7 +140,7 @@ function LocationCard({ loc, index, onChange, onRemove }) {
 
 // ── Main form ────────────────────────────────────────────────────────────────
 
-export default function ProxyHostForm({ initial, onSave, onClose }) {
+export default function ProxyHostForm({ initial, rawConf, onSave, onClose }) {
   const [form, setForm] = useState(
     initial
       ? { ...DEFAULT, ...initial, custom_location: initial.custom_location || '', allow_ips: initial.allow_ips || [], extra_locations: initial.extra_locations || [] }
@@ -148,7 +148,7 @@ export default function ProxyHostForm({ initial, onSave, onClose }) {
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
-  const [openSection, setOpenSection] = useState({ access: false, locations: false })
+  const [openSection, setOpenSection] = useState({ access: false, locations: false, rawConf: false })
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }))
   const toggleSection = key => setOpenSection(s => ({ ...s, [key]: !s[key] }))
@@ -188,7 +188,7 @@ export default function ProxyHostForm({ initial, onSave, onClose }) {
     <div className="overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="panel">
         <header className="panel-header">
-          <h2>{initial ? 'Edit Proxy Host' : 'Add Proxy Host'}</h2>
+          <h2>{rawConf ? 'Onboard Proxy Host' : initial ? 'Edit Proxy Host' : 'Add Proxy Host'}</h2>
           <button className="close-btn" onClick={onClose} type="button">✕</button>
         </header>
 
@@ -343,12 +343,31 @@ export default function ProxyHostForm({ initial, onSave, onClose }) {
             )}
           </div>
 
+          {/* ── Original config (onboarding) ── */}
+          {rawConf && (
+            <div className="accordion">
+              <button
+                type="button"
+                className="accordion-header"
+                onClick={() => toggleSection('rawConf')}
+              >
+                <span>Original config</span>
+                <span className="accordion-arrow">{openSection.rawConf ? '▲' : '▼'}</span>
+              </button>
+              {openSection.rawConf && (
+                <div className="accordion-body" style={{ padding: 0 }}>
+                  <pre className="raw-conf-preview">{rawConf}</pre>
+                </div>
+              )}
+            </div>
+          )}
+
           {error && <div className="form-error">{error}</div>}
 
           <div className="panel-footer">
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : (initial ? 'Update' : 'Create')}
+              {saving ? 'Saving...' : rawConf ? 'Onboard' : initial ? 'Update' : 'Create'}
             </button>
           </div>
         </form>
