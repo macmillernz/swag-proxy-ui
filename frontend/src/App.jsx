@@ -4,9 +4,9 @@ import ConfirmModal from './components/ConfirmModal.jsx'
 import NewHostModal from './components/NewHostModal.jsx'
 
 // Lazy-load everything that pulls in the CodeMirror bundle
-const ProxyHostEditor = lazy(() => import('./components/ProxyHostEditor.jsx'))
-const ConfigEditor    = lazy(() => import('./components/ConfigEditor.jsx'))
-const AuthConfigPage  = lazy(() => import('./components/AuthConfigPage.jsx'))
+const ProxyHostEditor  = lazy(() => import('./components/ProxyHostEditor.jsx'))
+const ConfigFilesPage  = lazy(() => import('./components/ConfigFilesPage.jsx'))
+const AuthConfigPage   = lazy(() => import('./components/AuthConfigPage.jsx'))
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -32,9 +32,6 @@ export default function App() {
   // Reload
   const [reloading, setReloading]   = useState(false)
   const [reloadError, setReloadError] = useState(null)
-
-  // Config editor dirty state
-  const [configDirty, setConfigDirty] = useState(false)
 
   // Health / container name
   const [swagContainer, setSwagContainer] = useState('swag')
@@ -139,7 +136,6 @@ export default function App() {
       const res = await fetch(`${API}/api/nginx/reload`, { method: 'POST' })
       if (res.ok) {
         setPendingReload(false)
-        setConfigDirty(false)
         showToast('nginx reloaded ✓')
       } else {
         const err = await res.json().catch(() => ({}))
@@ -153,7 +149,7 @@ export default function App() {
   }
 
   const enabledCount = hosts.filter(h => h.enabled && !h.is_sample).length
-  const needsReload  = pendingReload || configDirty
+  const needsReload  = pendingReload
 
   return (
     <div className="app">
@@ -186,7 +182,6 @@ export default function App() {
               >
                 <span className="nav-icon">✎</span>
                 Config Files
-                {configDirty && <span className="nav-dirty-dot" />}
               </button>
             </li>
             <li>
@@ -262,11 +257,11 @@ export default function App() {
             <header className="page-header">
               <div>
                 <h1 className="page-title">Config Files</h1>
-                <p className="page-subtitle">Edit nginx.conf, proxy.conf, resolver.conf and ssl.conf</p>
+                <p className="page-subtitle">Edit core nginx configuration files</p>
               </div>
             </header>
-            <Suspense fallback={<div className="loading-state">Loading editor...</div>}>
-              <ConfigEditor onDirty={setConfigDirty} />
+            <Suspense fallback={<div className="loading-state">Loading...</div>}>
+              <ConfigFilesPage onSave={() => setPendingReload(true)} />
             </Suspense>
           </>
         )}

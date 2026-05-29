@@ -765,6 +765,38 @@ input:disabled { opacity: 0.5; cursor: not-allowed; }
 /* ── ACL badge ── */
 .badge-acl  { background: rgba(201,160,220,0.15); color: #c9a0dc; }
 
+/* ── Auth level badges ── */
+.badge-level-server   { background: rgba(92,143,226,0.14); color: var(--accent); }
+.badge-level-location { background: rgba(92,184,122,0.14); color: var(--success); }
+
+/* ── Auth / config status badges ── */
+.badge-status-active   { background: rgba(92,184,122,0.14); color: var(--success); }
+.badge-status-disabled { background: rgba(90,89,86,0.2);    color: var(--text3); }
+.badge-status-sample   { background: rgba(226,164,92,0.14); color: var(--warning); }
+.badge-status-new      { background: rgba(92,143,226,0.10); color: var(--accent); }
+
+/* ── Config / auth card extras ── */
+.conf-card-desc {
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.4;
+}
+.conf-card-warn {
+  font-size: 11px;
+  color: var(--warning);
+  opacity: 0.85;
+}
+.conf-card-filename {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 11px;
+  color: var(--text3);
+}
+.conf-card-missing {
+  font-size: 12px;
+  color: var(--danger);
+  opacity: 0.8;
+}
+
 /* ── Sample badge + card ── */
 .badge-sample { background: rgba(90,89,86,0.3); color: var(--text3); }
 .host-card.sample { border-color: rgba(255,255,255,0.04); opacity: 0.7; }

@@ -446,27 +446,46 @@ def _auth_conf_path(provider: str, level: str) -> Path:
     return NGINX_CONF_DIR / f"{provider}-{level}.conf"
 
 
+def _auth_disabled_path(provider: str, level: str) -> Path:
+    return NGINX_CONF_DIR / f"{provider}-{level}.conf.disabled"
+
+
 def _auth_status(provider: str, level: str) -> str:
     if _auth_conf_path(provider, level).exists():
         return "active"
+    if _auth_disabled_path(provider, level).exists():
+        return "disabled"
     if (NGINX_CONF_DIR / f"{provider}-{level}.conf.sample").exists():
         return "sample"
     return "new"
 
 
 def _auth_content(provider: str, level: str) -> str:
+    """Return content for editor: active → disabled → sample → built-in template."""
     conf = _auth_conf_path(provider, level)
     if conf.exists():
         return conf.read_text()
+    disabled = _auth_disabled_path(provider, level)
+    if disabled.exists():
+        return disabled.read_text()
     sample = NGINX_CONF_DIR / f"{provider}-{level}.conf.sample"
     if sample.exists():
         return sample.read_text()
     return DEFAULT_AUTH_TEMPLATES.get(provider, {}).get(level, "")
 
 
+def _check_auth_args(provider: str, level: str) -> None:
+    if provider not in AUTH_PROVIDERS:
+        raise HTTPException(400, detail=f"Unknown auth provider: {provider}")
+    if level not in ("server", "location"):
+        raise HTTPException(400, detail="Level must be 'server' or 'location'")
+    if not NGINX_CONF_DIR.exists():
+        raise HTTPException(503, detail="Nginx config dir not mounted — check /config/nginx volume")
+
+
 @app.get("/api/auth-configs")
 def list_auth_configs():
-    """Return status (active/sample/new) for each provider × level."""
+    """Return status (active/disabled/sample/new) for each provider × level."""
     result: dict[str, dict[str, str]] = {}
     for provider in AUTH_PROVIDERS:
         result[provider] = {
@@ -478,30 +497,55 @@ def list_auth_configs():
 
 @app.get("/api/auth-configs/{provider}/{level}")
 def get_auth_config(provider: str, level: str):
-    if provider not in AUTH_PROVIDERS:
-        raise HTTPException(400, detail=f"Unknown auth provider: {provider}")
-    if level not in ("server", "location"):
-        raise HTTPException(400, detail="Level must be 'server' or 'location'")
-    if not NGINX_CONF_DIR.exists():
-        raise HTTPException(503, detail="Nginx config dir not mounted — check /config/nginx volume")
+    _check_auth_args(provider, level)
     return {
         "provider": provider,
-        "level": level,
-        "status": _auth_status(provider, level),
-        "content": _auth_content(provider, level),
+        "level":    level,
+        "status":   _auth_status(provider, level),
+        "content":  _auth_content(provider, level),
     }
 
 
 @app.put("/api/auth-configs/{provider}/{level}")
 def update_auth_config(provider: str, level: str, body: ConfigFileUpdate):
-    if provider not in AUTH_PROVIDERS:
-        raise HTTPException(400, detail=f"Unknown auth provider: {provider}")
-    if level not in ("server", "location"):
-        raise HTTPException(400, detail="Level must be 'server' or 'location'")
-    if not NGINX_CONF_DIR.exists():
-        raise HTTPException(503, detail="Nginx config dir not mounted — check /config/nginx volume")
-    _auth_conf_path(provider, level).write_text(body.content)
+    _check_auth_args(provider, level)
+    # Write to whichever file currently exists (.conf or .conf.disabled);
+    # if neither exists, create a new .conf (status: new → active).
+    target = (
+        _auth_disabled_path(provider, level)
+        if _auth_disabled_path(provider, level).exists()
+        else _auth_conf_path(provider, level)
+    )
+    target.write_text(body.content)
     return {"provider": provider, "level": level, "message": "saved"}
+
+
+@app.post("/api/auth-configs/{provider}/{level}/enable")
+def enable_auth_config(provider: str, level: str):
+    """Activate: rename .conf.disabled → .conf, or create from sample/template."""
+    _check_auth_args(provider, level)
+    conf     = _auth_conf_path(provider, level)
+    disabled = _auth_disabled_path(provider, level)
+
+    if disabled.exists():
+        disabled.rename(conf)
+        content = conf.read_text()
+    else:
+        content = _auth_content(provider, level)
+        conf.write_text(content)
+
+    return {"provider": provider, "level": level, "status": "active", "content": content}
+
+
+@app.post("/api/auth-configs/{provider}/{level}/disable")
+def disable_auth_config(provider: str, level: str):
+    """Deactivate: rename .conf → .conf.disabled."""
+    _check_auth_args(provider, level)
+    conf = _auth_conf_path(provider, level)
+    if not conf.exists():
+        raise HTTPException(404, detail=f"{provider}-{level}.conf not found")
+    conf.rename(_auth_disabled_path(provider, level))
+    return {"provider": provider, "level": level, "message": "disabled"}
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
