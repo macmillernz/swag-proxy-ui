@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { themeBase, nginxExtensions } from '../lib/nginxEditor.js'
 
@@ -11,6 +11,12 @@ export default function ProxyHostEditor({ name, content: initialContent, onSave,
   const [saved, setSaved]     = useState(initialContent)
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState(null)
+
+  // Lock body scroll while the panel is open
+  useEffect(() => {
+    document.body.classList.add('modal-open')
+    return () => document.body.classList.remove('modal-open')
+  }, [])
 
   const isDirty = content !== saved
 

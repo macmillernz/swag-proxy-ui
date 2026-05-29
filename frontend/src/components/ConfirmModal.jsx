@@ -1,4 +1,11 @@
+import { useEffect } from 'react'
+
 export default function ConfirmModal({ title, message, onConfirm, onCancel }) {
+  useEffect(() => {
+    document.body.classList.add('modal-open')
+    return () => document.body.classList.remove('modal-open')
+  }, [])
+
   return (
     <div className="overlay" onClick={e => e.target === e.currentTarget && onCancel()}>
       <div className="modal">

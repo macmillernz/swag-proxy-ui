@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -7,6 +7,11 @@ export default function NewHostModal({ onCreated, onClose }) {
   const [type, setType]         = useState('subdomain')
   const [creating, setCreating] = useState(false)
   const [error, setError]       = useState(null)
+
+  useEffect(() => {
+    document.body.classList.add('modal-open')
+    return () => document.body.classList.remove('modal-open')
+  }, [])
 
   const create = async () => {
     setCreating(true)

@@ -255,6 +255,9 @@ body {
 .btn-sm { padding: 0.3rem 0.65rem; font-size: 13px; }
 
 /* ── Overlay / Panel ── */
+/* Prevent body scroll while any modal is open */
+body.modal-open { overflow: hidden; }
+
 .overlay {
   position: fixed;
   inset: 0;
@@ -263,6 +266,7 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
+  overscroll-behavior: none; /* stop scroll events reaching the page */
 }
 
 .panel {
@@ -274,6 +278,7 @@ body {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  overscroll-behavior: contain; /* don't let scroll escape to the page */
 }
 
 /* Wider panel for the freeform conf editor */
@@ -691,16 +696,19 @@ input:disabled { opacity: 0.5; cursor: not-allowed; }
 /* ── CodeMirror container ── */
 .cm-wrapper {
   border-radius: var(--radius);
-  overflow: hidden;
+  overflow: hidden;          /* clips to border-radius; CM scrolls inside */
   border: 1px solid var(--border2);
   transition: border-color 0.15s;
   flex: 1;
+  min-height: 0;             /* allows flex parent to constrain height */
 }
 .cm-wrapper:focus-within { border-color: var(--accent); }
-/* reset CM's own outline */
-.cm-editor { outline: none !important; }
-.cm-editor.cm-focused { outline: none !important; }
-/* scrollbar in editor */
+
+/* Make the editor fill whatever height the wrapper provides */
+.cm-wrapper .cm-editor    { height: 100%; outline: none !important; }
+.cm-wrapper .cm-editor.cm-focused { outline: none !important; }
+
+/* Enable vertical scroll inside the editor */
 .cm-scroller { overflow: auto !important; }
 
 /* ── Raw conf preview (onboard) ── */
@@ -737,11 +745,10 @@ input:disabled { opacity: 0.5; cursor: not-allowed; }
 .host-card.sample:hover { opacity: 1; border-color: rgba(255,255,255,0.12); }
 
 /* ── Tall CodeMirror inside the wide editor panel ── */
+/* flex: 1 + min-height: 0 (already in .cm-wrapper) lets the flex parent
+   constrain the height; no magic pixel calculation needed */
 .cm-wrapper.editor-tall {
-  flex: 1;
-  min-height: 0;
-  height: calc(100vh - 116px); /* panel height − header − actions bar */
-  overflow: hidden;
+  flex: 1;  /* fill space between panel-header and conf-actions */
 }
 
 /* ── Auth badge ── */
