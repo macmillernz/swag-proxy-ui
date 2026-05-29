@@ -36,6 +36,11 @@ export default function ProxyHostList({ hosts, loading, onEdit, onToggle, onDele
                   ACL ({host.allow_ips.length})
                 </span>
               )}
+              {host.auth_provider && host.auth_provider !== 'none' && (
+                <span className="badge badge-auth" title={`Auth: ${host.auth_provider}`}>
+                  {host.auth_provider}
+                </span>
+              )}
             </div>
           ) : (
             <p className="unmanaged-hint">

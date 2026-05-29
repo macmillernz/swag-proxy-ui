@@ -3,7 +3,8 @@ import ProxyHostList from './components/ProxyHostList.jsx'
 import ProxyHostForm from './components/ProxyHostForm.jsx'
 import ConfirmModal from './components/ConfirmModal.jsx'
 
-const ConfigEditor = lazy(() => import('./components/ConfigEditor.jsx'))
+const ConfigEditor   = lazy(() => import('./components/ConfigEditor.jsx'))
+const AuthConfigPage = lazy(() => import('./components/AuthConfigPage.jsx'))
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -177,6 +178,15 @@ export default function App() {
                 {configDirty && <span className="nav-dirty-dot" />}
               </button>
             </li>
+            <li>
+              <button
+                className={`nav-item ${page === 'auth-config' ? 'active' : ''}`}
+                onClick={() => setPage('auth-config')}
+              >
+                <span className="nav-icon">🔒</span>
+                Auth Config
+              </button>
+            </li>
           </ul>
         </nav>
 
@@ -237,6 +247,20 @@ export default function App() {
             </header>
             <Suspense fallback={<div className="loading-state">Loading editor...</div>}>
               <ConfigEditor onDirty={setConfigDirty} />
+            </Suspense>
+          </>
+        )}
+
+        {page === 'auth-config' && (
+          <>
+            <header className="page-header">
+              <div>
+                <h1 className="page-title">Auth Config</h1>
+                <p className="page-subtitle">Configure Authelia, Authentik, LDAP and TinyAuth snippets</p>
+              </div>
+            </header>
+            <Suspense fallback={<div className="loading-state">Loading editor...</div>}>
+              <AuthConfigPage />
             </Suspense>
           </>
         )}

@@ -1,5 +1,13 @@
 import { useState } from 'react'
 
+const AUTH_PROVIDERS = [
+  { id: 'none',      label: 'None' },
+  { id: 'authelia',  label: 'Authelia' },
+  { id: 'authentik', label: 'Authentik' },
+  { id: 'ldap',      label: 'LDAP' },
+  { id: 'tinyauth',  label: 'TinyAuth' },
+]
+
 const DEFAULT = {
   name: '',
   type: 'subdomain',
@@ -12,6 +20,9 @@ const DEFAULT = {
   client_max_body_size: '0',
   allow_ips: [],
   extra_locations: [],
+  auth_provider: 'none',
+  auth_server: false,
+  auth_location: false,
 }
 
 const DEFAULT_LOCATION = {
@@ -21,6 +32,7 @@ const DEFAULT_LOCATION = {
   upstream_proto: 'http',
   websocket: false,
   allow_ips: [],
+  auth_location: false,
 }
 
 // ── Inline sub-components ────────────────────────────────────────────────────
@@ -67,7 +79,7 @@ function AllowListEditor({ ips, onChange }) {
   )
 }
 
-function LocationCard({ loc, index, onChange, onRemove }) {
+function LocationCard({ loc, index, authProvider, onChange, onRemove }) {
   const set = (key, val) => onChange({ ...loc, [key]: val })
 
   return (
@@ -134,6 +146,20 @@ function LocationCard({ loc, index, onChange, onRemove }) {
         <label>Allow IPs <span className="label-hint">(optional — adds deny all)</span></label>
         <AllowListEditor ips={loc.allow_ips} onChange={v => set('allow_ips', v)} />
       </div>
+
+      {authProvider && authProvider !== 'none' && (
+        <div className="form-group">
+          <label className="toggle-label" style={{ gap: '8px' }}>
+            <span style={{ fontSize: '13px', color: 'var(--text2)' }}>
+              Require {authProvider} auth
+            </span>
+            <div
+              className={`toggle ${loc.auth_location ? 'on' : ''}`}
+              onClick={() => set('auth_location', !loc.auth_location)}
+            />
+          </label>
+        </div>
+      )}
     </div>
   )
 }
@@ -143,12 +169,21 @@ function LocationCard({ loc, index, onChange, onRemove }) {
 export default function ProxyHostForm({ initial, rawConf, onSave, onClose }) {
   const [form, setForm] = useState(
     initial
-      ? { ...DEFAULT, ...initial, custom_location: initial.custom_location || '', allow_ips: initial.allow_ips || [], extra_locations: initial.extra_locations || [] }
+      ? {
+          ...DEFAULT,
+          ...initial,
+          custom_location: initial.custom_location || '',
+          allow_ips: initial.allow_ips || [],
+          extra_locations: (initial.extra_locations || []).map(l => ({ ...DEFAULT_LOCATION, ...l })),
+          auth_provider: initial.auth_provider || 'none',
+          auth_server: initial.auth_server ?? false,
+          auth_location: initial.auth_location ?? false,
+        }
       : DEFAULT
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
-  const [openSection, setOpenSection] = useState({ access: false, locations: false, rawConf: false })
+  const [openSection, setOpenSection] = useState({ access: false, locations: false, auth: false, rawConf: false })
 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }))
   const toggleSection = key => setOpenSection(s => ({ ...s, [key]: !s[key] }))
@@ -332,6 +367,7 @@ export default function ProxyHostForm({ initial, rawConf, onSave, onClose }) {
                     key={i}
                     loc={loc}
                     index={i}
+                    authProvider={form.auth_provider}
                     onChange={updated => updateLocation(i, updated)}
                     onRemove={() => removeLocation(i)}
                   />
@@ -339,6 +375,75 @@ export default function ProxyHostForm({ initial, rawConf, onSave, onClose }) {
                 <button type="button" className="btn btn-ghost btn-sm" onClick={addLocation}>
                   + Add Location
                 </button>
+              </div>
+            )}
+          </div>
+
+          {/* ── Auth ── */}
+          <div className="accordion">
+            <button
+              type="button"
+              className="accordion-header"
+              onClick={() => toggleSection('auth')}
+            >
+              <span>
+                Authentication
+                {form.auth_provider !== 'none' && (
+                  <span className="accordion-badge accordion-badge-auth">{form.auth_provider}</span>
+                )}
+              </span>
+              <span className="accordion-arrow">{openSection.auth ? '▲' : '▼'}</span>
+            </button>
+            {openSection.auth && (
+              <div className="accordion-body">
+                <div className="form-group">
+                  <label>Auth Provider</label>
+                  <select
+                    value={form.auth_provider}
+                    onChange={e => {
+                      const val = e.target.value
+                      set('auth_provider', val)
+                      if (val === 'none') {
+                        set('auth_server', false)
+                        set('auth_location', false)
+                      }
+                    }}
+                  >
+                    {AUTH_PROVIDERS.map(p => (
+                      <option key={p.id} value={p.id}>{p.label}</option>
+                    ))}
+                  </select>
+                  <span className="form-hint">
+                    Configure provider conf files on the Auth Config page first.
+                  </span>
+                </div>
+
+                {form.auth_provider !== 'none' && (
+                  <div className="auth-toggles">
+                    {form.type === 'subdomain' && (
+                      <label className="toggle-label">
+                        <span>
+                          Server-level auth
+                          <small className="toggle-hint">Adds {form.auth_provider}-server.conf include</small>
+                        </span>
+                        <div
+                          className={`toggle ${form.auth_server ? 'on' : ''}`}
+                          onClick={() => set('auth_server', !form.auth_server)}
+                        />
+                      </label>
+                    )}
+                    <label className="toggle-label">
+                      <span>
+                        Location auth
+                        <small className="toggle-hint">Protects primary location block</small>
+                      </span>
+                      <div
+                        className={`toggle ${form.auth_location ? 'on' : ''}`}
+                        onClick={() => set('auth_location', !form.auth_location)}
+                      />
+                    </label>
+                  </div>
+                )}
               </div>
             )}
           </div>

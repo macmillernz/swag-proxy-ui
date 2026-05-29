@@ -13,6 +13,159 @@ SWAG_CONTAINER = os.getenv("SWAG_CONTAINER_NAME", "swag")
 METADATA_PREFIX = "## SWAG-UI: "
 EDITABLE_CONF_FILES = {"nginx.conf", "proxy.conf", "resolver.conf", "ssl.conf"}
 
+AUTH_PROVIDERS = {"authelia", "authentik", "ldap", "tinyauth"}
+
+DEFAULT_AUTH_TEMPLATES: dict[str, dict[str, str]] = {
+    "authelia": {
+        "server": """\
+## Authelia server-block snippet
+## https://www.authelia.com/integration/proxies/nginx/
+
+location = /authelia/api/authz/auth-request {
+    internal;
+
+    proxy_pass              http://authelia:9091/api/authz/auth-request;
+
+    proxy_pass_request_body off;
+    proxy_set_header        Content-Length "";
+    proxy_set_header        X-Original-URL $scheme://$http_host$request_uri;
+    proxy_set_header        X-Forwarded-Method $request_method;
+    proxy_set_header        X-Forwarded-Proto $scheme;
+    proxy_set_header        X-Forwarded-Host $http_host;
+    proxy_set_header        X-Forwarded-URI $request_uri;
+    proxy_set_header        X-Forwarded-For $remote_addr;
+    proxy_set_header        X-Original-Method $request_method;
+    proxy_set_header        X-Original-URI $request_uri;
+    proxy_set_header        X-Real-IP $remote_addr;
+}
+
+location @authelia_proxy_signin {
+    internal;
+    add_header Set-Cookie $authelia_redirect_cookie;
+    return 302 https://authelia.example.com/;
+}
+""",
+        "location": """\
+## Authelia location-block snippet
+auth_request /authelia/api/authz/auth-request;
+auth_request_set $user   $upstream_http_remote_user;
+auth_request_set $groups $upstream_http_remote_groups;
+auth_request_set $name   $upstream_http_remote_name;
+auth_request_set $emails $upstream_http_remote_emails;
+
+proxy_set_header Remote-User   $user;
+proxy_set_header Remote-Groups $groups;
+proxy_set_header Remote-Name   $name;
+proxy_set_header Remote-Emails $emails;
+
+error_page 401 =302 https://authelia.example.com/;
+""",
+    },
+    "authentik": {
+        "server": """\
+## Authentik server-block snippet
+## https://goauthentik.io/docs/providers/proxy/nginx
+
+location /outpost.goauthentik.io {
+    proxy_pass          https://authentik:9443/outpost.goauthentik.io;
+    proxy_set_header    Host $host;
+    proxy_set_header    X-Original-URL $scheme://$http_host$request_uri;
+    add_header          Set-Cookie $auth_cookie;
+    auth_request_set    $auth_cookie $upstream_http_set_cookie;
+    proxy_pass_request_body off;
+    set                 $null '';
+    proxy_set_header    Content-Length $null;
+}
+
+location @goauthentik_proxy_signin {
+    internal;
+    add_header Set-Cookie $auth_cookie;
+    return 302 /outpost.goauthentik.io/start?rd=$request_uri;
+}
+""",
+        "location": """\
+## Authentik location-block snippet
+auth_request /outpost.goauthentik.io/auth/nginx;
+error_page 401 = @goauthentik_proxy_signin;
+auth_request_set $auth_cookie $upstream_http_set_cookie;
+add_header Set-Cookie $auth_cookie;
+
+auth_request_set $authentik_username $upstream_http_x_authentik_username;
+auth_request_set $authentik_groups   $upstream_http_x_authentik_groups;
+auth_request_set $authentik_email    $upstream_http_x_authentik_email;
+auth_request_set $authentik_name     $upstream_http_x_authentik_name;
+auth_request_set $authentik_uid      $upstream_http_x_authentik_uid;
+
+proxy_set_header X-authentik-username $authentik_username;
+proxy_set_header X-authentik-groups   $authentik_groups;
+proxy_set_header X-authentik-email    $authentik_email;
+proxy_set_header X-authentik-name     $authentik_name;
+proxy_set_header X-authentik-uid      $authentik_uid;
+""",
+    },
+    "ldap": {
+        "server": """\
+## LDAP server-block snippet (linuxserver/ldap-auth)
+
+location /ldaplogin {
+    proxy_pass http://ldap-auth:9000;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header X-Target $proxy_proto_addr;
+    proxy_set_header X-Username '';
+    proxy_set_header X-Url $scheme://$http_host$request_uri;
+    proxy_set_header X-Cookie-Name "ZNC_Auth";
+    proxy_set_header Cookie $http_cookie;
+}
+
+location = /auth {
+    internal;
+    proxy_pass http://ldap-auth:8888;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header X-Ldap-URL      "ldap://ldap.example.com:389";
+    proxy_set_header X-Ldap-Base     "dc=example,dc=com";
+    proxy_set_header X-Ldap-Binddn   "cn=admin,dc=example,dc=com";
+    proxy_set_header X-Ldap-Bindpasswd "";
+    proxy_set_header X-Ldap-Group    "(|(memberUid=$remote_user))";
+    proxy_set_header X-CookieName    "ZNC_Auth";
+    proxy_set_header Cookie $http_cookie;
+}
+""",
+        "location": """\
+## LDAP location-block snippet
+auth_request /auth;
+error_page 401 =200 /ldaplogin;
+""",
+    },
+    "tinyauth": {
+        "server": """\
+## TinyAuth server-block snippet
+## https://github.com/steveiliop56/tinyauth
+
+location = /tinyauth {
+    internal;
+    proxy_pass http://tinyauth:3000/api/auth/nginx;
+    proxy_set_header X-Original-URI $request_uri;
+    proxy_set_header X-Original-URL $scheme://$host$request_uri;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+}
+
+location @tinyauth_login {
+    internal;
+    set $domain $scheme://$host;
+    return 302 http://tinyauth:3000/?redirect=$domain$request_uri;
+}
+""",
+        "location": """\
+## TinyAuth location-block snippet
+auth_request /tinyauth;
+error_page 401 = @tinyauth_login;
+""",
+    },
+}
+
 app = FastAPI(title="SWAG Proxy UI")
 
 app.add_middleware(
@@ -37,6 +190,7 @@ class ExtraLocation(BaseModel):
     upstream_proto: Literal["http", "https"] = "http"
     websocket: bool = False
     allow_ips: list[str] = []
+    auth_location: bool = False
 
 
 class ProxyHost(BaseModel):
@@ -51,6 +205,9 @@ class ProxyHost(BaseModel):
     client_max_body_size: str = "0"
     allow_ips: list[str] = []          # server-level (subdomain) / primary location (subfolder)
     extra_locations: list[ExtraLocation] = []
+    auth_provider: Literal["none", "authelia", "authentik", "ldap", "tinyauth"] = "none"
+    auth_server: bool = False          # include {provider}-server.conf in server block (subdomain only)
+    auth_location: bool = False        # include {provider}-location.conf in primary location
 
 
 class ConfigFileUpdate(BaseModel):
@@ -66,12 +223,16 @@ def build_location_block(
     upstream_proto: str,
     websocket: bool,
     allow_ips: list[str],
+    auth_provider: str = "none",
+    auth_location: bool = False,
 ) -> str:
     lines = [
         f"    location {path} {{",
         "        include /config/nginx/proxy.conf;",
         "        include /config/nginx/resolver.conf;",
     ]
+    if auth_provider != "none" and auth_location:
+        lines.append(f"        include /config/nginx/{auth_provider}-location.conf;")
     for ip in allow_ips:
         lines.append(f"        allow {ip};")
     if allow_ips:
@@ -107,6 +268,8 @@ def generate_subdomain_conf(host: ProxyHost) -> str:
         "",
         f"    client_max_body_size {host.client_max_body_size};",
     ]
+    if host.auth_provider != "none" and host.auth_server:
+        lines.append(f"    include /config/nginx/{host.auth_provider}-server.conf;")
     if host.allow_ips:
         lines.append("")
         for ip in host.allow_ips:
@@ -116,12 +279,14 @@ def generate_subdomain_conf(host: ProxyHost) -> str:
     lines.append(build_location_block(
         "/", host.upstream_host, host.upstream_port,
         host.upstream_proto, host.websocket, [],
+        auth_provider=host.auth_provider, auth_location=host.auth_location,
     ))
     for loc in host.extra_locations:
         lines.append("")
         lines.append(build_location_block(
             loc.path, loc.upstream_host, loc.upstream_port,
             loc.upstream_proto, loc.websocket, loc.allow_ips,
+            auth_provider=host.auth_provider, auth_location=loc.auth_location,
         ))
     lines += ["}", ""]
     return "\n".join(lines)
@@ -141,6 +306,7 @@ def generate_subfolder_conf(host: ProxyHost) -> str:
         build_location_block(
             f"{loc_path}/", host.upstream_host, host.upstream_port,
             host.upstream_proto, host.websocket, host.allow_ips,
+            auth_provider=host.auth_provider, auth_location=host.auth_location,
         ),
     ]
     for loc in host.extra_locations:
@@ -148,6 +314,7 @@ def generate_subfolder_conf(host: ProxyHost) -> str:
         lines.append(build_location_block(
             loc.path, loc.upstream_host, loc.upstream_port,
             loc.upstream_proto, loc.websocket, loc.allow_ips,
+            auth_provider=host.auth_provider, auth_location=loc.auth_location,
         ))
     lines.append("")
     return "\n".join(lines)
@@ -296,6 +463,9 @@ def parse_unmanaged_conf(name: str):
         "allow_ips": [],
         "extra_locations": [],
         "custom_location": None,
+        "auth_provider": "none",
+        "auth_server": False,
+        "auth_location": False,
         "raw_conf": content,
     }
 
@@ -370,6 +540,70 @@ def reload_nginx():
         raise HTTPException(500, detail=f"Reload failed:\n{output}")
 
     return {"message": "nginx reloaded successfully", "test_output": test_output}
+
+
+# ── Auth config endpoints ─────────────────────────────────────────────────────
+
+def _auth_conf_path(provider: str, level: str) -> Path:
+    return NGINX_CONF_DIR / f"{provider}-{level}.conf"
+
+
+def _auth_status(provider: str, level: str) -> str:
+    if _auth_conf_path(provider, level).exists():
+        return "active"
+    if (NGINX_CONF_DIR / f"{provider}-{level}.conf.sample").exists():
+        return "sample"
+    return "new"
+
+
+def _auth_content(provider: str, level: str) -> str:
+    conf = _auth_conf_path(provider, level)
+    if conf.exists():
+        return conf.read_text()
+    sample = NGINX_CONF_DIR / f"{provider}-{level}.conf.sample"
+    if sample.exists():
+        return sample.read_text()
+    return DEFAULT_AUTH_TEMPLATES.get(provider, {}).get(level, "")
+
+
+@app.get("/api/auth-configs")
+def list_auth_configs():
+    """Return status (active/sample/new) for each provider × level."""
+    result: dict[str, dict[str, str]] = {}
+    for provider in AUTH_PROVIDERS:
+        result[provider] = {
+            "server":   _auth_status(provider, "server"),
+            "location": _auth_status(provider, "location"),
+        }
+    return result
+
+
+@app.get("/api/auth-configs/{provider}/{level}")
+def get_auth_config(provider: str, level: str):
+    if provider not in AUTH_PROVIDERS:
+        raise HTTPException(400, detail=f"Unknown auth provider: {provider}")
+    if level not in ("server", "location"):
+        raise HTTPException(400, detail="Level must be 'server' or 'location'")
+    if not NGINX_CONF_DIR.exists():
+        raise HTTPException(503, detail="Nginx config dir not mounted — check /config/nginx volume")
+    return {
+        "provider": provider,
+        "level": level,
+        "status": _auth_status(provider, level),
+        "content": _auth_content(provider, level),
+    }
+
+
+@app.put("/api/auth-configs/{provider}/{level}")
+def update_auth_config(provider: str, level: str, body: ConfigFileUpdate):
+    if provider not in AUTH_PROVIDERS:
+        raise HTTPException(400, detail=f"Unknown auth provider: {provider}")
+    if level not in ("server", "location"):
+        raise HTTPException(400, detail="Level must be 'server' or 'location'")
+    if not NGINX_CONF_DIR.exists():
+        raise HTTPException(503, detail="Nginx config dir not mounted — check /config/nginx volume")
+    _auth_conf_path(provider, level).write_text(body.content)
+    return {"provider": provider, "level": level, "message": "saved"}
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
