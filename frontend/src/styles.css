@@ -276,6 +276,14 @@ body {
   flex-direction: column;
 }
 
+/* Wider panel for the freeform conf editor */
+.panel.panel-wide {
+  width: min(820px, 100vw);
+  overflow: hidden; /* editor manages its own scroll */
+}
+/* In the wide panel, cm-wrapper + actions fill available height */
+.panel.panel-wide .panel-form { flex: 1; min-height: 0; padding: 0; gap: 0; }
+
 .panel-header {
   display: flex;
   align-items: center;
@@ -288,6 +296,12 @@ body {
   z-index: 1;
 }
 .panel-header h2 { font-size: 16px; font-weight: 600; }
+.panel-title-mono {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text2);
+}
 .close-btn {
   background: none;
   border: none;
@@ -716,6 +730,19 @@ input:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── ACL badge ── */
 .badge-acl  { background: rgba(201,160,220,0.15); color: #c9a0dc; }
+
+/* ── Sample badge + card ── */
+.badge-sample { background: rgba(90,89,86,0.3); color: var(--text3); }
+.host-card.sample { border-color: rgba(255,255,255,0.04); opacity: 0.7; }
+.host-card.sample:hover { opacity: 1; border-color: rgba(255,255,255,0.12); }
+
+/* ── Tall CodeMirror inside the wide editor panel ── */
+.cm-wrapper.editor-tall {
+  flex: 1;
+  min-height: 0;
+  height: calc(100vh - 116px); /* panel height − header − actions bar */
+  overflow: hidden;
+}
 
 /* ── Auth badge ── */
 .badge-auth { background: rgba(92,143,226,0.15); color: var(--accent); }

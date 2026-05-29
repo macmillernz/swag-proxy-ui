@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import ProxyHostList from './components/ProxyHostList.jsx'
-import ProxyHostForm from './components/ProxyHostForm.jsx'
 import ConfirmModal from './components/ConfirmModal.jsx'
+import NewHostModal from './components/NewHostModal.jsx'
 
-const ConfigEditor   = lazy(() => import('./components/ConfigEditor.jsx'))
-const AuthConfigPage = lazy(() => import('./components/AuthConfigPage.jsx'))
+// Lazy-load everything that pulls in the CodeMirror bundle
+const ProxyHostEditor = lazy(() => import('./components/ProxyHostEditor.jsx'))
+const ConfigEditor    = lazy(() => import('./components/ConfigEditor.jsx'))
+const AuthConfigPage  = lazy(() => import('./components/AuthConfigPage.jsx'))
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -12,19 +14,20 @@ export default function App() {
   const [page, setPage] = useState('proxy-hosts')
 
   // Proxy hosts state
-  const [hosts, setHosts] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [warning, setWarning] = useState(null)
-  const [formOpen, setFormOpen] = useState(false)
-  const [editingHost, setEditingHost] = useState(null)
-  const [rawConf, setRawConf] = useState(null)
+  const [hosts, setHosts]           = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [error, setError]           = useState(null)
+  const [warning, setWarning]       = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [pendingReload, setPendingReload] = useState(false)
-  const [toast, setToast] = useState(null)
+  const [toast, setToast]           = useState(null)
 
-  // Reload state
-  const [reloading, setReloading] = useState(false)
+  // Editor state: null | { name, content }
+  const [editorHost, setEditorHost] = useState(null)
+  const [newHostOpen, setNewHostOpen] = useState(false)
+
+  // Reload
+  const [reloading, setReloading]   = useState(false)
   const [reloadError, setReloadError] = useState(null)
 
   // Config editor dirty state
@@ -62,24 +65,46 @@ export default function App() {
 
   useEffect(() => { fetchHosts() }, [fetchHosts])
 
-  const handleSave = async (host) => {
-    const isEdit = !!editingHost
-    const url = isEdit ? `${API}/api/proxy-hosts/${editingHost.name}` : `${API}/api/proxy-hosts`
-    const res = await fetch(url, {
-      method: isEdit ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(host),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      throw new Error(err.detail || 'Save failed')
-    }
-    await fetchHosts()
-    setFormOpen(false)
-    setEditingHost(null)
-    setPendingReload(true)
-    showToast(isEdit ? 'Proxy host updated' : 'Proxy host created')
+  // ── Open editor for an existing host ──────────────────────────────────────
+
+  const openEdit = async (host) => {
+    try {
+      const res = await fetch(`${API}/api/proxy-hosts/${host.name}/content`)
+      if (!res.ok) return
+      const data = await res.json()
+      setEditorHost({ name: host.name, content: data.content })
+    } catch {}
   }
+
+  // ── Enable a sample file (copy → .conf then open editor) ──────────────────
+
+  const handleEnableSample = async (host) => {
+    try {
+      const res = await fetch(`${API}/api/proxy-hosts/${host.name}/enable-sample`, { method: 'POST' })
+      if (!res.ok) return
+      const data = await res.json()
+      await fetchHosts()
+      setEditorHost({ name: host.name, content: data.content })
+      showToast(`${host.name} enabled — fill in your upstream details and save`)
+    } catch {}
+  }
+
+  // ── New host created from modal ────────────────────────────────────────────
+
+  const handleNewHostCreated = async (data) => {
+    setNewHostOpen(false)
+    await fetchHosts()
+    setEditorHost({ name: data.name, content: data.content })
+  }
+
+  // ── After saving in the editor ─────────────────────────────────────────────
+
+  const handleEditorSave = () => {
+    setPendingReload(true)
+    showToast(`${editorHost.name} saved`)
+  }
+
+  // ── Toggle enable/disable ──────────────────────────────────────────────────
 
   const handleToggle = async (name) => {
     const res = await fetch(`${API}/api/proxy-hosts/${name}/toggle`, { method: 'POST' })
@@ -89,6 +114,8 @@ export default function App() {
       showToast('Status updated')
     }
   }
+
+  // ── Delete ─────────────────────────────────────────────────────────────────
 
   const handleDelete = async () => {
     const res = await fetch(`${API}/api/proxy-hosts/${deleteTarget}`, { method: 'DELETE' })
@@ -100,26 +127,7 @@ export default function App() {
     }
   }
 
-  const openEdit = async (host) => {
-    if (!host.managed) return
-    const res = await fetch(`${API}/api/proxy-hosts/${host.name}`)
-    if (res.ok) {
-      setEditingHost(await res.json())
-      setRawConf(null)
-      setFormOpen(true)
-    }
-  }
-
-  const openOnboard = async (host) => {
-    const res = await fetch(`${API}/api/proxy-hosts/${host.name}/parse`)
-    if (res.ok) {
-      const data = await res.json()
-      const { raw_conf, ...parsed } = data
-      setEditingHost(parsed)
-      setRawConf(raw_conf)
-      setFormOpen(true)
-    }
-  }
+  // ── Nginx reload ───────────────────────────────────────────────────────────
 
   const handleReload = async () => {
     setReloading(true)
@@ -141,8 +149,8 @@ export default function App() {
     }
   }
 
-  const enabledCount = hosts.filter(h => h.enabled).length
-  const needsReload = pendingReload || configDirty
+  const enabledCount = hosts.filter(h => h.enabled && !h.is_sample).length
+  const needsReload  = pendingReload || configDirty
 
   return (
     <div className="app">
@@ -163,7 +171,7 @@ export default function App() {
                 Proxy Hosts
                 {hosts.length > 0 && (
                   <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text3)' }}>
-                    {enabledCount}/{hosts.length}
+                    {enabledCount}/{hosts.filter(h => !h.is_sample).length}
                   </span>
                 )}
               </button>
@@ -215,8 +223,8 @@ export default function App() {
                 <h1 className="page-title">Proxy Hosts</h1>
                 <p className="page-subtitle">Manage nginx reverse proxy configurations</p>
               </div>
-              <button className="btn btn-primary" onClick={() => { setEditingHost(null); setRawConf(null); setFormOpen(true) }}>
-                + Add Proxy Host
+              <button className="btn btn-primary" onClick={() => setNewHostOpen(true)}>
+                + Custom
               </button>
             </header>
 
@@ -229,9 +237,9 @@ export default function App() {
                 hosts={hosts}
                 loading={loading}
                 onEdit={openEdit}
-                onOnboard={openOnboard}
                 onToggle={handleToggle}
                 onDelete={name => setDeleteTarget(name)}
+                onEnableSample={handleEnableSample}
               />
             )}
           </>
@@ -266,13 +274,22 @@ export default function App() {
         )}
       </main>
 
-      {formOpen && (
-        <ProxyHostForm
-          initial={editingHost}
-          rawConf={rawConf}
-          onSave={handleSave}
-          onClose={() => { setFormOpen(false); setEditingHost(null); setRawConf(null) }}
+      {newHostOpen && (
+        <NewHostModal
+          onCreated={handleNewHostCreated}
+          onClose={() => setNewHostOpen(false)}
         />
+      )}
+
+      {editorHost && (
+        <Suspense fallback={null}>
+          <ProxyHostEditor
+            name={editorHost.name}
+            content={editorHost.content}
+            onSave={handleEditorSave}
+            onClose={() => setEditorHost(null)}
+          />
+        </Suspense>
       )}
 
       {deleteTarget && (
