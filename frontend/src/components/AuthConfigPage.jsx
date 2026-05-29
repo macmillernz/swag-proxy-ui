@@ -112,6 +112,16 @@ export default function AuthConfigPage() {
 
   return (
     <div className="auth-page">
+      {/* ── Proxy host reminder ── */}
+      <div className="auth-proxy-reminder">
+        <span className="auth-proxy-reminder-icon">ℹ</span>
+        <span>
+          The <strong>{PROVIDERS.find(p => p.id === provider)?.label}</strong> proxy host must also be
+          enabled in <strong>Proxy Hosts</strong> for auth to work
+          — e.g. <code>{provider}.subdomain.conf</code>.
+        </span>
+      </div>
+
       {/* ── Provider tabs ── */}
       <div className="auth-provider-tabs">
         {PROVIDERS.map(p => (
@@ -178,6 +188,7 @@ export default function AuthConfigPage() {
                 onChange={handleChange}
                 theme={themeBase}
                 extensions={nginxExtensions}
+                height="100%"
                 basicSetup={{
                   lineNumbers:               true,
                   highlightActiveLine:       true,

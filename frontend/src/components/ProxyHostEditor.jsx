@@ -62,6 +62,7 @@ export default function ProxyHostEditor({ name, content: initialContent, onSave,
             onChange={handleChange}
             theme={themeBase}
             extensions={nginxExtensions}
+            height="100%"
             basicSetup={{
               lineNumbers:               true,
               highlightActiveLine:       true,

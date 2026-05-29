@@ -113,6 +113,7 @@ export default function ConfigEditor({ onDirty }) {
               onChange={handleChange}
               theme={themeBase}
               extensions={nginxExtensions}
+              height="100%"
               basicSetup={{
                 lineNumbers:               true,
                 highlightActiveLine:       true,

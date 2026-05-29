@@ -90,9 +90,35 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   margin-bottom: 1.5rem;
+  gap: 1rem;
 }
 .page-title { font-size: 22px; font-weight: 600; }
 .page-subtitle { color: var(--text2); font-size: 14px; margin-top: 2px; }
+
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* ── Search input ── */
+.search-input {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 0.45rem 0.75rem;
+  width: 180px;
+  outline: none;
+  transition: border-color 0.15s, width 0.2s;
+}
+.search-input:focus { border-color: var(--accent); width: 220px; }
+.search-input::placeholder { color: var(--text3); }
+/* hide the native clear button on webkit */
+.search-input::-webkit-search-cancel-button { -webkit-appearance: none; }
 
 /* ── Banners ── */
 .reload-banner {
@@ -894,4 +920,34 @@ input:disabled { opacity: 0.5; cursor: not-allowed; }
   background: rgba(92,143,226,0.07);
   border: 1px solid rgba(92,143,226,0.2);
   color: var(--text2);
+}
+
+/* ── Auth proxy host reminder banner ── */
+.auth-proxy-reminder {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(90,89,86,0.15);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 0.65rem 0.9rem;
+  font-size: 13px;
+  color: var(--text2);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+.auth-proxy-reminder strong { color: var(--text); font-weight: 600; }
+.auth-proxy-reminder code {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  background: rgba(255,255,255,0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--text);
+}
+.auth-proxy-reminder-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+  color: var(--text3);
+  margin-top: 1px;
 }

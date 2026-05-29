@@ -26,6 +26,9 @@ export default function App() {
   const [editorHost, setEditorHost] = useState(null)
   const [newHostOpen, setNewHostOpen] = useState(false)
 
+  // Search
+  const [search, setSearch] = useState('')
+
   // Reload
   const [reloading, setReloading]   = useState(false)
   const [reloadError, setReloadError] = useState(null)
@@ -223,9 +226,18 @@ export default function App() {
                 <h1 className="page-title">Proxy Hosts</h1>
                 <p className="page-subtitle">Manage nginx reverse proxy configurations</p>
               </div>
-              <button className="btn btn-primary" onClick={() => setNewHostOpen(true)}>
-                + Custom
-              </button>
+              <div className="page-header-actions">
+                <input
+                  type="search"
+                  className="search-input"
+                  placeholder="Search…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+                <button className="btn btn-primary" onClick={() => setNewHostOpen(true)}>
+                  + Custom
+                </button>
+              </div>
             </header>
 
             {warning && <div className="warning-banner">{warning}</div>}
@@ -234,7 +246,7 @@ export default function App() {
               <div className="error-state">{error}</div>
             ) : (
               <ProxyHostList
-                hosts={hosts}
+                hosts={search ? hosts.filter(h => h.name.toLowerCase().includes(search.toLowerCase())) : hosts}
                 loading={loading}
                 onEdit={openEdit}
                 onToggle={handleToggle}
