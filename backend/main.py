@@ -438,35 +438,222 @@ def toggle_proxy_host(name: str):
 @app.get("/api/proxy-hosts/{name}/parse")
 def parse_unmanaged_conf(name: str):
     """Extract structured settings from an unmanaged conf file for onboarding."""
+    import re
+
     result = find_conf_file(name)
     if not result:
         raise HTTPException(404, detail=f"Proxy host '{name}' not found")
     path, enabled, type_ = result
-
     content = path.read_text()
 
-    import re
+    # ── helpers ──────────────────────────────────────────────────────────────
 
-    def search(pattern, default=None):
-        m = re.search(pattern, content)
+    def search(text: str, pattern: str, default=None):
+        m = re.search(pattern, text)
         return m.group(1) if m else default
 
+    def find_allow_ips(text: str) -> list[str]:
+        """Return all allowed IPs/CIDRs, excluding 'allow all'."""
+        return [
+            ip.strip() for ip in re.findall(r'\ballow\s+([^;]+);', text)
+            if ip.strip() != 'all'
+        ]
+
+    def extract_location_blocks(text: str) -> list[tuple[str, str]]:
+        """
+        Return (path_modifier_string, block_content) for every location { } block.
+        Uses brace-counting so nested blocks are captured but also returned
+        independently — callers must filter by content.
+        """
+        blocks = []
+        for m in re.finditer(r'\blocation\s+([^{;]+?)\s*\{', text):
+            loc_path = m.group(1).strip()
+            start = m.end()
+            depth, j = 1, start
+            while j < len(text) and depth > 0:
+                if text[j] == '{':
+                    depth += 1
+                elif text[j] == '}':
+                    depth -= 1
+                j += 1
+            blocks.append((loc_path, text[start:j - 1]))
+        return blocks
+
+    def parse_upstream(block: str) -> tuple[str, int, str]:
+        """Extract upstream host/port/proto from a location block."""
+        host  = search(block, r'set \$upstream_app\s+(\S+);', '')
+        port  = search(block, r'set \$upstream_port\s+(\d+);', '80')
+        proto = search(block, r'set \$upstream_proto\s+(https?);', 'http')
+
+        # Fallback: bare proxy_pass http://host:port
+        if not host:
+            m = re.search(r'proxy_pass\s+(https?)://([^:/\s;]+)(?::(\d+))?', block)
+            if m:
+                proto = m.group(1)
+                host  = m.group(2)
+                port  = m.group(3) or ('443' if proto == 'https' else '80')
+
+        return host or '', int(port or 80), proto or 'http'
+
+    def detect_auth_provider_from_text(text: str) -> str:
+        """Infer auth provider from include or auth_request statements."""
+        for provider in ('authelia', 'authentik', 'ldap', 'tinyauth'):
+            if re.search(rf'/config/nginx/{provider}[_-]', text):
+                return provider
+        # Fallback: auth_request path hints
+        m = re.search(r'auth_request\s+(/\S+);', text)
+        if m:
+            req = m.group(1).lower()
+            if 'authelia'    in req:               return 'authelia'
+            if 'goauthentik' in req or 'outpost' in req: return 'authentik'
+            if 'tinyauth'    in req:               return 'tinyauth'
+            if req in ('/auth', '/auth;'):          return 'ldap'
+        return 'none'
+
+    # ── split content into pre-locations section vs location blocks ───────────
+
+    all_location_blocks = extract_location_blocks(content)
+
+    # Content *before* the first location block = server-level directives
+    m_first_loc = re.search(r'\blocation\s+[^{;]+\{', content)
+    pre_location_content = content[:m_first_loc.start()] if m_first_loc else content
+
+    # ── server-level auth ────────────────────────────────────────────────────
+
+    auth_server_provider = detect_auth_provider_from_text(
+        re.sub(r'\blocation\b.*', '', pre_location_content, flags=re.DOTALL)
+        if re.search(r'\blocation\b', pre_location_content) else pre_location_content
+    )
+    # Only count it if there's an explicit *-server.conf include
+    auth_server = bool(re.search(
+        r'include\s+/config/nginx/(?:authelia|authentik|ldap|tinyauth)-server\.conf',
+        pre_location_content,
+    ))
+
+    # ── server-level allow IPs ───────────────────────────────────────────────
+
+    server_allow_ips = find_allow_ips(pre_location_content)
+
+    # ── custom_location (subfolder redirect) ─────────────────────────────────
+
+    custom_location: Optional[str] = None
+    if type_ == 'subfolder':
+        m_redir = re.search(
+            r'location\s*=\s*(/[^\s{]+)\s*\{[^}]*return\s+30[12]',
+            content, re.DOTALL
+        )
+        if m_redir:
+            redir_path = m_redir.group(1)
+            if redir_path != f'/{name}':
+                custom_location = redir_path
+
+    # ── classify location blocks ─────────────────────────────────────────────
+
+    proxy_locations = []   # locations that have a real upstream
+    for loc_path, block in all_location_blocks:
+        # Skip internal auth-helper locations and named error handlers
+        if loc_path.startswith('@'):
+            continue
+        if re.search(r'\binternal\s*;', block):
+            continue
+        if re.search(r'\breturn\s+30[12]\b', block):
+            continue
+
+        host, port, proto = parse_upstream(block)
+        if not host:
+            continue
+
+        is_ws       = bool(re.search(r'proxy_set_header\s+Upgrade', block, re.IGNORECASE))
+        loc_allows  = find_allow_ips(block)
+        loc_auth    = bool(re.search(r'\bauth_request\b|include\s+/config/nginx/\S+-location\.conf', block))
+        loc_provider = detect_auth_provider_from_text(block) if loc_auth else 'none'
+
+        proxy_locations.append({
+            'path':            loc_path,
+            'upstream_host':   host,
+            'upstream_port':   port,
+            'upstream_proto':  proto,
+            'websocket':       is_ws,
+            'allow_ips':       loc_allows,
+            'auth_location':   loc_auth,
+            'auth_provider':   loc_provider,
+        })
+
+    # ── identify primary vs extra locations ──────────────────────────────────
+
+    primary: Optional[dict] = None
+    if type_ == 'subdomain':
+        for candidate_path in ('/', '= /'):
+            primary = next((l for l in proxy_locations if l['path'] == candidate_path), None)
+            if primary:
+                break
+        if primary is None and proxy_locations:
+            primary = proxy_locations[0]
+        extra_locs = [l for l in proxy_locations if l is not primary]
+    else:
+        # Subfolder: primary is the location whose path matches the subfolder path
+        subfolder_path = (custom_location or f'/{name}').rstrip('/') + '/'
+        primary = next(
+            (l for l in proxy_locations if l['path'].rstrip('/') + '/' == subfolder_path),
+            proxy_locations[0] if proxy_locations else None
+        )
+        extra_locs = [l for l in proxy_locations if l is not primary]
+
+    # ── determine upstream from primary location ──────────────────────────────
+
+    upstream_host  = primary['upstream_host']  if primary else ''
+    upstream_port  = primary['upstream_port']  if primary else 80
+    upstream_proto = primary['upstream_proto'] if primary else 'http'
+    websocket      = primary['websocket']      if primary else False
+
+    # allow_ips: server-level for subdomain, primary location for subfolder
+    allow_ips = (
+        primary['allow_ips'] if (type_ == 'subfolder' and primary)
+        else server_allow_ips
+    )
+
+    # ── determine auth settings ───────────────────────────────────────────────
+
+    auth_provider = 'none'
+    auth_location = False
+
+    if auth_server and auth_server_provider != 'none':
+        auth_provider = auth_server_provider
+
+    if primary and primary['auth_location']:
+        auth_location = True
+        if primary['auth_provider'] != 'none':
+            auth_provider = primary['auth_provider']
+
+    # ── build output ─────────────────────────────────────────────────────────
+
     return {
-        "name": name,
-        "type": type_,
-        "enabled": enabled,
-        "upstream_host": search(r"set \$upstream_app\s+(\S+);", ""),
-        "upstream_port": int(search(r"set \$upstream_port\s+(\d+);", "80")),
-        "upstream_proto": search(r"set \$upstream_proto\s+(https?);", "http"),
-        "websocket": bool(re.search(r"proxy_set_header\s+Upgrade", content, re.IGNORECASE)),
-        "client_max_body_size": search(r"client_max_body_size\s+(\S+);", "0"),
-        "allow_ips": [],
-        "extra_locations": [],
-        "custom_location": None,
-        "auth_provider": "none",
-        "auth_server": False,
-        "auth_location": False,
-        "raw_conf": content,
+        "name":               name,
+        "type":               type_,
+        "enabled":            enabled,
+        "upstream_host":      upstream_host,
+        "upstream_port":      upstream_port,
+        "upstream_proto":     upstream_proto,
+        "websocket":          websocket,
+        "client_max_body_size": search(content, r'client_max_body_size\s+(\S+);', '0'),
+        "allow_ips":          allow_ips,
+        "extra_locations":    [
+            {
+                "path":           l['path'],
+                "upstream_host":  l['upstream_host'],
+                "upstream_port":  l['upstream_port'],
+                "upstream_proto": l['upstream_proto'],
+                "websocket":      l['websocket'],
+                "allow_ips":      l['allow_ips'],
+                "auth_location":  l['auth_location'],
+            }
+            for l in extra_locs
+        ],
+        "custom_location":    custom_location,
+        "auth_provider":      auth_provider,
+        "auth_server":        auth_server,
+        "auth_location":      auth_location,
+        "raw_conf":           content,
     }
 
 
