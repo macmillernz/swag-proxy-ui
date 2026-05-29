@@ -2,10 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 import ProxyHostList from './components/ProxyHostList.jsx'
 import ProxyHostForm from './components/ProxyHostForm.jsx'
 import ConfirmModal from './components/ConfirmModal.jsx'
+import ConfigEditor from './components/ConfigEditor.jsx'
 
 const API = import.meta.env.VITE_API_URL || ''
 
 export default function App() {
+  const [page, setPage] = useState('proxy-hosts')
+
+  // Proxy hosts state
   const [hosts, setHosts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -13,18 +17,35 @@ export default function App() {
   const [formOpen, setFormOpen] = useState(false)
   const [editingHost, setEditingHost] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
-  const [reloadNeeded, setReloadNeeded] = useState(false)
+  const [pendingReload, setPendingReload] = useState(false)
   const [toast, setToast] = useState(null)
+
+  // Reload state
+  const [reloading, setReloading] = useState(false)
+  const [reloadError, setReloadError] = useState(null)
+
+  // Config editor dirty state
+  const [configDirty, setConfigDirty] = useState(false)
+
+  // Health / container name
+  const [swagContainer, setSwagContainer] = useState('swag')
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), 3500)
   }
+
+  useEffect(() => {
+    fetch(`${API}/api/health`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d?.swag_container && setSwagContainer(d.swag_container))
+      .catch(() => {})
+  }, [])
 
   const fetchHosts = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/proxy-hosts`)
-      if (!res.ok) throw new Error('Backend error')
+      if (!res.ok) throw new Error()
       const data = await res.json()
       setHosts(data.hosts || [])
       setWarning(data.warning || null)
@@ -53,7 +74,7 @@ export default function App() {
     await fetchHosts()
     setFormOpen(false)
     setEditingHost(null)
-    setReloadNeeded(true)
+    setPendingReload(true)
     showToast(isEdit ? 'Proxy host updated' : 'Proxy host created')
   }
 
@@ -61,7 +82,7 @@ export default function App() {
     const res = await fetch(`${API}/api/proxy-hosts/${name}/toggle`, { method: 'POST' })
     if (res.ok) {
       await fetchHosts()
-      setReloadNeeded(true)
+      setPendingReload(true)
       showToast('Status updated')
     }
   }
@@ -71,7 +92,7 @@ export default function App() {
     if (res.ok) {
       await fetchHosts()
       setDeleteTarget(null)
-      setReloadNeeded(true)
+      setPendingReload(true)
       showToast('Proxy host deleted')
     }
   }
@@ -85,7 +106,28 @@ export default function App() {
     }
   }
 
+  const handleReload = async () => {
+    setReloading(true)
+    setReloadError(null)
+    try {
+      const res = await fetch(`${API}/api/nginx/reload`, { method: 'POST' })
+      if (res.ok) {
+        setPendingReload(false)
+        setConfigDirty(false)
+        showToast('nginx reloaded ✓')
+      } else {
+        const err = await res.json().catch(() => ({}))
+        setReloadError(err.detail || 'Reload failed')
+      }
+    } catch {
+      setReloadError('Could not reach backend')
+    } finally {
+      setReloading(false)
+    }
+  }
+
   const enabledCount = hosts.filter(h => h.enabled).length
+  const needsReload = pendingReload || configDirty
 
   return (
     <div className="app">
@@ -94,10 +136,14 @@ export default function App() {
           <span className="brand-icon">⚡</span>
           <span className="brand-name">SWAG UI</span>
         </div>
+
         <nav>
           <ul className="nav-list">
             <li>
-              <button className="nav-item active">
+              <button
+                className={`nav-item ${page === 'proxy-hosts' ? 'active' : ''}`}
+                onClick={() => setPage('proxy-hosts')}
+              >
                 <span className="nav-icon">⇄</span>
                 Proxy Hosts
                 {hosts.length > 0 && (
@@ -107,41 +153,75 @@ export default function App() {
                 )}
               </button>
             </li>
+            <li>
+              <button
+                className={`nav-item ${page === 'config-files' ? 'active' : ''}`}
+                onClick={() => setPage('config-files')}
+              >
+                <span className="nav-icon">✎</span>
+                Config Files
+                {configDirty && <span className="nav-dirty-dot" />}
+              </button>
+            </li>
           </ul>
         </nav>
+
+        <div className="sidebar-footer">
+          {reloadError && (
+            <div className="reload-error-msg">{reloadError}</div>
+          )}
+          <button
+            className={`btn reload-btn ${needsReload ? 'btn-primary' : 'btn-ghost'} ${reloading ? 'loading' : ''}`}
+            onClick={handleReload}
+            disabled={reloading}
+            title={`docker exec ${swagContainer} nginx -s reload`}
+          >
+            <span className={`reload-icon ${reloading ? 'spinning' : ''}`}>↺</span>
+            {reloading ? 'Reloading...' : 'Reload nginx'}
+          </button>
+          <span className="sidebar-container-hint">{swagContainer}</span>
+        </div>
       </aside>
 
       <main className="main-content">
-        <header className="page-header">
-          <div>
-            <h1 className="page-title">Proxy Hosts</h1>
-            <p className="page-subtitle">Manage nginx reverse proxy configurations</p>
-          </div>
-          <button className="btn btn-primary" onClick={() => { setEditingHost(null); setFormOpen(true) }}>
-            + Add Proxy Host
-          </button>
-        </header>
+        {page === 'proxy-hosts' && (
+          <>
+            <header className="page-header">
+              <div>
+                <h1 className="page-title">Proxy Hosts</h1>
+                <p className="page-subtitle">Manage nginx reverse proxy configurations</p>
+              </div>
+              <button className="btn btn-primary" onClick={() => { setEditingHost(null); setFormOpen(true) }}>
+                + Add Proxy Host
+              </button>
+            </header>
 
-        {reloadNeeded && (
-          <div className="reload-banner">
-            <span>Changes saved — reload nginx to apply:</span>
-            <code>docker exec swag nginx -s reload</code>
-            <button className="dismiss-btn" onClick={() => setReloadNeeded(false)} type="button">✕</button>
-          </div>
+            {warning && <div className="warning-banner">{warning}</div>}
+
+            {error ? (
+              <div className="error-state">{error}</div>
+            ) : (
+              <ProxyHostList
+                hosts={hosts}
+                loading={loading}
+                onEdit={openEdit}
+                onToggle={handleToggle}
+                onDelete={name => setDeleteTarget(name)}
+              />
+            )}
+          </>
         )}
 
-        {warning && <div className="warning-banner">{warning}</div>}
-
-        {error ? (
-          <div className="error-state">{error}</div>
-        ) : (
-          <ProxyHostList
-            hosts={hosts}
-            loading={loading}
-            onEdit={openEdit}
-            onToggle={handleToggle}
-            onDelete={name => setDeleteTarget(name)}
-          />
+        {page === 'config-files' && (
+          <>
+            <header className="page-header">
+              <div>
+                <h1 className="page-title">Config Files</h1>
+                <p className="page-subtitle">Edit nginx.conf, proxy.conf, resolver.conf and ssl.conf</p>
+              </div>
+            </header>
+            <ConfigEditor onDirty={setConfigDirty} />
+          </>
         )}
       </main>
 

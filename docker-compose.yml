@@ -5,11 +5,16 @@ services:
     ports:
       - "9000:8000"
     volumes:
-      # Mount your SWAG config volume — adjust the host path to match your setup
-      - /opt/appdata/swag/nginx/proxy-confs:/config/nginx/proxy-confs:rw
+      # Mount the full nginx config directory — covers proxy-confs/ and the editable conf files
+      - /opt/appdata/swag/nginx:/config/nginx:rw
+      # Docker socket — needed for the Reload nginx button
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - PROXY_CONF_DIR=/config/nginx/proxy-confs
-    # Optional: put this on the same Docker network as SWAG so container names resolve
+      - NGINX_CONF_DIR=/config/nginx
+      # Name of your SWAG container (default: swag)
+      - SWAG_CONTAINER_NAME=swag
+    # Optional: join the same network as SWAG so container names resolve
     # networks:
     #   - swag_net
 
