@@ -142,6 +142,13 @@ body {
 /* Search bar inside a page body (DNS Config, Logs, etc.) */
 .dns-search-bar { margin-bottom: 1.25rem; }
 
+/* Right-aligned action bar inside a page body (Config Files +Custom) */
+.page-actions-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1.25rem;
+}
+
 /* ── Log viewer ── */
 .log-content {
   overflow-y: auto;       /* scrolls within the grid 1fr row */

@@ -251,6 +251,10 @@ class ConfigFileUpdate(BaseModel):
     content: str
 
 
+class NewConfigFile(BaseModel):
+    filename: str
+
+
 # ── File helpers ──────────────────────────────────────────────────────────────
 
 def parse_conf_filename(fn: str) -> Optional[tuple[str, str, bool, bool]]:
@@ -384,20 +388,60 @@ def enable_sample(name: str):
 
 # ── Nginx config file endpoints ───────────────────────────────────────────────
 
+def _is_system_nginx_conf(filename: str) -> bool:
+    """Files managed elsewhere — not surfaced as user 'custom' configs."""
+    if filename in EDITABLE_CONF_FILES:
+        return True
+    for provider in AUTH_PROVIDERS:
+        if filename in (f"{provider}-server.conf", f"{provider}-location.conf"):
+            return True
+    return False
+
+
+def _nginx_conf_path(filename: str) -> Path:
+    """Resolve and validate a .conf filename in /config/nginx (no traversal)."""
+    if not filename or "/" in filename or "\\" in filename:
+        raise HTTPException(400, detail="Invalid filename")
+    if not filename.endswith(".conf"):
+        raise HTTPException(400, detail="Filename must end in .conf")
+    path = NGINX_CONF_DIR / filename
+    if not path.resolve().is_relative_to(NGINX_CONF_DIR.resolve()):
+        raise HTTPException(400, detail="Invalid filename")
+    return path
+
+
 @app.get("/api/nginx-configs")
 def list_nginx_configs():
-    result = []
-    for filename in sorted(EDITABLE_CONF_FILES):
-        path = NGINX_CONF_DIR / filename
-        result.append({"filename": filename, "exists": path.exists()})
-    return result
+    """Core editable files + any user-created custom .conf files."""
+    core = [
+        {"filename": f, "exists": (NGINX_CONF_DIR / f).exists()}
+        for f in sorted(EDITABLE_CONF_FILES)
+    ]
+    custom = []
+    if NGINX_CONF_DIR.exists():
+        for path in sorted(NGINX_CONF_DIR.glob("*.conf")):
+            if path.is_file() and not _is_system_nginx_conf(path.name):
+                custom.append({"filename": path.name})
+    return {"core": core, "custom": custom}
+
+
+@app.post("/api/nginx-configs", status_code=201)
+def create_nginx_config(body: NewConfigFile):
+    name = body.filename.strip()
+    if not name.endswith(".conf"):
+        name += ".conf"
+    if _is_system_nginx_conf(name):
+        raise HTTPException(400, detail=f"'{name}' is a reserved file")
+    path = _nginx_conf_path(name)
+    if path.exists():
+        raise HTTPException(400, detail=f"'{name}' already exists")
+    path.write_text("")
+    return {"filename": name, "content": ""}
 
 
 @app.get("/api/nginx-configs/{filename}")
 def get_nginx_config(filename: str):
-    if filename not in EDITABLE_CONF_FILES:
-        raise HTTPException(400, detail=f"Not an editable file: {filename}")
-    path = NGINX_CONF_DIR / filename
+    path = _nginx_conf_path(filename)
     if not path.exists():
         raise HTTPException(404, detail=f"{filename} not found — is /config/nginx mounted?")
     return {"filename": filename, "content": path.read_text()}
@@ -405,13 +449,21 @@ def get_nginx_config(filename: str):
 
 @app.put("/api/nginx-configs/{filename}")
 def update_nginx_config(filename: str, body: ConfigFileUpdate):
-    if filename not in EDITABLE_CONF_FILES:
-        raise HTTPException(400, detail=f"Not an editable file: {filename}")
-    path = NGINX_CONF_DIR / filename
+    path = _nginx_conf_path(filename)
     if not path.exists():
         raise HTTPException(404, detail=f"{filename} not found")
     path.write_text(body.content)
     return {"filename": filename, "message": "saved"}
+
+
+@app.delete("/api/nginx-configs/{filename}", status_code=204)
+def delete_nginx_config(filename: str):
+    if _is_system_nginx_conf(filename):
+        raise HTTPException(400, detail="Cannot delete a system config file")
+    path = _nginx_conf_path(filename)
+    if not path.exists():
+        raise HTTPException(404, detail=f"{filename} not found")
+    path.unlink()
 
 
 # ── Nginx reload endpoint ─────────────────────────────────────────────────────
@@ -452,28 +504,19 @@ def _auth_conf_path(provider: str, level: str) -> Path:
     return NGINX_CONF_DIR / f"{provider}-{level}.conf"
 
 
-def _auth_disabled_path(provider: str, level: str) -> Path:
-    return NGINX_CONF_DIR / f"{provider}-{level}.conf.disabled"
-
-
 def _auth_status(provider: str, level: str) -> str:
     if _auth_conf_path(provider, level).exists():
         return "active"
-    if _auth_disabled_path(provider, level).exists():
-        return "disabled"
     if (NGINX_CONF_DIR / f"{provider}-{level}.conf.sample").exists():
         return "sample"
     return "new"
 
 
 def _auth_content(provider: str, level: str) -> str:
-    """Return content for editor: active → disabled → sample → built-in template."""
+    """Return content for editor: active → sample → built-in template."""
     conf = _auth_conf_path(provider, level)
     if conf.exists():
         return conf.read_text()
-    disabled = _auth_disabled_path(provider, level)
-    if disabled.exists():
-        return disabled.read_text()
     sample = NGINX_CONF_DIR / f"{provider}-{level}.conf.sample"
     if sample.exists():
         return sample.read_text()
@@ -491,7 +534,7 @@ def _check_auth_args(provider: str, level: str) -> None:
 
 @app.get("/api/auth-configs")
 def list_auth_configs():
-    """Return status (active/disabled/sample/new) for each provider × level."""
+    """Return status (active/sample/new) for each provider × level."""
     result: dict[str, dict[str, str]] = {}
     for provider in AUTH_PROVIDERS:
         result[provider] = {
@@ -515,43 +558,18 @@ def get_auth_config(provider: str, level: str):
 @app.put("/api/auth-configs/{provider}/{level}")
 def update_auth_config(provider: str, level: str, body: ConfigFileUpdate):
     _check_auth_args(provider, level)
-    # Write to whichever file currently exists (.conf or .conf.disabled);
-    # if neither exists, create a new .conf (status: new → active).
-    target = (
-        _auth_disabled_path(provider, level)
-        if _auth_disabled_path(provider, level).exists()
-        else _auth_conf_path(provider, level)
-    )
-    target.write_text(body.content)
+    _auth_conf_path(provider, level).write_text(body.content)
     return {"provider": provider, "level": level, "message": "saved"}
 
 
 @app.post("/api/auth-configs/{provider}/{level}/enable")
 def enable_auth_config(provider: str, level: str):
-    """Activate: rename .conf.disabled → .conf, or create from sample/template."""
+    """Create .conf from sample or built-in template."""
     _check_auth_args(provider, level)
-    conf     = _auth_conf_path(provider, level)
-    disabled = _auth_disabled_path(provider, level)
-
-    if disabled.exists():
-        disabled.rename(conf)
-        content = conf.read_text()
-    else:
-        content = _auth_content(provider, level)
-        conf.write_text(content)
-
+    conf    = _auth_conf_path(provider, level)
+    content = _auth_content(provider, level)
+    conf.write_text(content)
     return {"provider": provider, "level": level, "status": "active", "content": content}
-
-
-@app.post("/api/auth-configs/{provider}/{level}/disable")
-def disable_auth_config(provider: str, level: str):
-    """Deactivate: rename .conf → .conf.disabled."""
-    _check_auth_args(provider, level)
-    conf = _auth_conf_path(provider, level)
-    if not conf.exists():
-        raise HTTPException(404, detail=f"{provider}-{level}.conf not found")
-    conf.rename(_auth_disabled_path(provider, level))
-    return {"provider": provider, "level": level, "message": "disabled"}
 
 
 # ── DNS config endpoints ──────────────────────────────────────────────────────

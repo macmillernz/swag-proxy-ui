@@ -16,10 +16,9 @@ const LEVEL_DESC = {
 }
 
 const STATUS = {
-  active:   { text: 'Active',   dotClass: 'active',   badgeClass: 'badge-status-active' },
-  disabled: { text: 'Disabled', dotClass: 'inactive', badgeClass: 'badge-status-disabled' },
-  sample:   { text: 'Sample',   dotClass: 'inactive', badgeClass: 'badge-status-sample' },
-  new:      { text: 'New',      dotClass: 'inactive', badgeClass: 'badge-status-new' },
+  active: { text: 'Active', dotClass: 'active',   badgeClass: 'badge-status-active' },
+  sample: { text: 'Sample', dotClass: 'inactive', badgeClass: 'badge-status-sample' },
+  new:    { text: 'New',    dotClass: 'inactive', badgeClass: 'badge-status-new' },
 }
 
 export default function AuthConfigPage() {
@@ -75,20 +74,6 @@ export default function AuthConfigPage() {
       setStatus(provider, level, 'active')
       setContents(c => ({ ...c, [key]: data.content }))
       showToast(`${key}.conf enabled`)
-    } finally {
-      setWorking(w => ({ ...w, [key]: false }))
-    }
-  }
-
-  const handleDisable = async (provider, level) => {
-    const key = `${provider}-${level}`
-    setWorking(w => ({ ...w, [key]: true }))
-    try {
-      const res = await fetch(`${API}/api/auth-configs/${provider}/${level}/disable`, { method: 'POST' })
-      if (res.ok) {
-        setStatus(provider, level, 'disabled')
-        showToast(`${key}.conf disabled`)
-      }
     } finally {
       setWorking(w => ({ ...w, [key]: false }))
     }
@@ -162,15 +147,6 @@ export default function AuthConfigPage() {
                     disabled={busy}
                   >
                     Enable
-                  </button>
-                )}
-                {isActive && (
-                  <button
-                    className="btn btn-sm btn-warning"
-                    onClick={() => handleDisable(card.provider, card.level)}
-                    disabled={busy}
-                  >
-                    Disable
                   </button>
                 )}
                 <button
