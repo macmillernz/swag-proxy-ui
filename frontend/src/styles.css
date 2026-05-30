@@ -307,13 +307,15 @@ body.modal-open { overflow: hidden; }
   overscroll-behavior: contain; /* don't let scroll escape to the page */
 }
 
-/* Wider panel for the freeform conf editor */
+/* Wider panel for the freeform conf editor.
+   Grid gives the middle row a DEFINITE 1fr height so that
+   CodeMirror's height:100% resolves correctly and the scroller activates. */
 .panel.panel-wide {
   width: min(820px, 100vw);
-  overflow: hidden; /* editor manages its own scroll */
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
 }
-/* In the wide panel, cm-wrapper + actions fill available height */
-.panel.panel-wide .panel-form { flex: 1; min-height: 0; padding: 0; gap: 0; }
 
 .panel-header {
   display: flex;
@@ -803,10 +805,10 @@ input:disabled { opacity: 0.5; cursor: not-allowed; }
 .host-card.sample:hover { opacity: 1; border-color: rgba(255,255,255,0.12); }
 
 /* ── Tall CodeMirror inside the wide editor panel ── */
-/* flex: 1 + min-height: 0 (already in .cm-wrapper) lets the flex parent
-   constrain the height; no magic pixel calculation needed */
+/* The grid row provides the definite height; the wrapper fills it via
+   grid's default align-items:stretch. overflow:hidden is on .cm-wrapper. */
 .cm-wrapper.editor-tall {
-  flex: 1;  /* fill space between panel-header and conf-actions */
+  min-height: 0; /* already in .cm-wrapper base, kept explicit for clarity */
 }
 
 /* ── Auth badge ── */

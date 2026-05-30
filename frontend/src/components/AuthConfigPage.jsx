@@ -74,8 +74,6 @@ export default function AuthConfigPage() {
       const data = await res.json()
       setStatus(provider, level, 'active')
       setContents(c => ({ ...c, [key]: data.content }))
-      // Open editor so user can fill in their settings
-      setEditing({ provider, level })
       showToast(`${key}.conf enabled`)
     } finally {
       setWorking(w => ({ ...w, [key]: false }))
