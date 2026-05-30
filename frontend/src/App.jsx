@@ -8,6 +8,7 @@ const ProxyHostEditor  = lazy(() => import('./components/ProxyHostEditor.jsx'))
 const ConfigFilesPage  = lazy(() => import('./components/ConfigFilesPage.jsx'))
 const AuthConfigPage   = lazy(() => import('./components/AuthConfigPage.jsx'))
 const DnsConfigPage    = lazy(() => import('./components/DnsConfigPage.jsx'))
+const LogsPage         = lazy(() => import('./components/LogsPage.jsx'))
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -203,6 +204,15 @@ export default function App() {
                 DNS Config
               </button>
             </li>
+            <li>
+              <button
+                className={`nav-item ${page === 'logs' ? 'active' : ''}`}
+                onClick={() => setPage('logs')}
+              >
+                <span className="nav-icon">≡</span>
+                Logs
+              </button>
+            </li>
           </ul>
         </nav>
 
@@ -309,6 +319,20 @@ export default function App() {
             </header>
             <Suspense fallback={<div className="loading-state">Loading...</div>}>
               <DnsConfigPage />
+            </Suspense>
+          </>
+        )}
+
+        {page === 'logs' && (
+          <>
+            <header className="page-header">
+              <div>
+                <h1 className="page-title">Logs</h1>
+                <p className="page-subtitle">View log files from /config/log</p>
+              </div>
+            </header>
+            <Suspense fallback={<div className="loading-state">Loading...</div>}>
+              <LogsPage />
             </Suspense>
           </>
         )}

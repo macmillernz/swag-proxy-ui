@@ -139,8 +139,30 @@ body {
 }
 .search-clear:hover { color: var(--text); }
 
-/* Search bar inside a page body (DNS Config, etc.) */
+/* Search bar inside a page body (DNS Config, Logs, etc.) */
 .dns-search-bar { margin-bottom: 1.25rem; }
+
+/* ── Log viewer ── */
+.log-content {
+  overflow-y: auto;       /* scrolls within the grid 1fr row */
+  background: #18181c;
+  padding: 0.75rem 1rem;
+  margin: 0;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text2);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.log-placeholder {
+  color: var(--text3);
+  font-style: italic;
+}
+.log-error { color: var(--danger); }
+
+/* directory badge on log cards */
+.badge-log-dir { background: rgba(90,89,86,0.25); color: var(--text3); }
 
 /* ── Banners ── */
 .reload-banner {

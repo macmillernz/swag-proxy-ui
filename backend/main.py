@@ -11,7 +11,11 @@ PROXY_CONF_DIR = Path("/config/nginx/proxy-confs")
 NGINX_CONF_DIR = Path("/config/nginx")
 DNS_CONF_DIR   = Path("/config/dns-conf")
 SITE_CONF_DIR  = Path("/config/nginx/site-confs")
+LOG_DIR        = Path("/config/log")
 SWAG_CONTAINER = os.getenv("SWAG_CONTAINER_NAME", "swag")
+
+# Maximum bytes to return from a single log file (tail)
+LOG_MAX_BYTES = 200 * 1024  # 200 KB
 EDITABLE_CONF_FILES = {"nginx.conf", "proxy.conf", "resolver.conf", "ssl.conf"}
 
 # (suffix, type, enabled, is_sample)
@@ -632,6 +636,54 @@ def update_site_conf(filename: str, body: ConfigFileUpdate):
         raise HTTPException(404, detail=f"{filename} not found")
     path.write_text(body.content)
     return {"filename": filename, "message": "saved"}
+
+
+# ── Log endpoints ────────────────────────────────────────────────────────────
+
+@app.get("/api/logs")
+def list_logs():
+    if not LOG_DIR.exists():
+        return {"files": [], "warning": f"Log directory not found: {LOG_DIR}"}
+    files = []
+    for path in sorted(LOG_DIR.rglob("*.log")):
+        if path.is_file():
+            rel = path.relative_to(LOG_DIR)
+            files.append({
+                "filepath": str(rel),
+                "filename": path.name,
+                "subdir":   str(rel.parent) if rel.parent != Path(".") else "",
+            })
+    return {"files": files}
+
+
+@app.get("/api/logs/{filepath:path}")
+def get_log(filepath: str):
+    path = (LOG_DIR / filepath).resolve()
+    if not path.is_relative_to(LOG_DIR.resolve()):
+        raise HTTPException(400, detail="Invalid path")
+    if not path.exists() or not path.is_file():
+        raise HTTPException(404, detail=f"{filepath} not found")
+
+    size = path.stat().st_size
+    if size > LOG_MAX_BYTES:
+        with path.open("rb") as f:
+            f.seek(size - LOG_MAX_BYTES)
+            raw = f.read()
+        # Skip the partial first line
+        content = raw.decode("utf-8", errors="replace")
+        newline = content.find("\n")
+        content = content[newline + 1:] if newline != -1 else content
+        truncated = True
+    else:
+        content = path.read_text(errors="replace")
+        truncated = False
+
+    return {
+        "filepath":  filepath,
+        "content":   content,
+        "size":      size,
+        "truncated": truncated,
+    }
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
