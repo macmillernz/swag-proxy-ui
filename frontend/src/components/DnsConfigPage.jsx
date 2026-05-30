@@ -73,9 +73,9 @@ export default function DnsConfigPage() {
               <div className="host-card-header">
                 <div className="host-name-row">
                   <h3 className="host-name">{providerName(file.filename)}</h3>
-                  <span className={`badge ${file.is_sample ? 'badge-status-sample' : 'badge-status-active'}`}>
-                    {file.is_sample ? 'sample' : 'configured'}
-                  </span>
+                  {file.is_sample && (
+                    <span className="badge badge-status-sample">sample</span>
+                  )}
                 </div>
                 <div
                   className={`status-dot ${file.is_sample ? 'inactive' : 'active'}`}

@@ -242,13 +242,22 @@ export default function App() {
                 <p className="page-subtitle">Manage nginx reverse proxy configurations</p>
               </div>
               <div className="page-header-actions">
-                <input
-                  type="search"
-                  className="search-input"
-                  placeholder="Search…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                />
+                <div className="search-wrap">
+                  <input
+                    type="search"
+                    className="search-input"
+                    placeholder="Search…"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                  />
+                  {search && (
+                    <button
+                      className="search-clear"
+                      onClick={() => setSearch('')}
+                      aria-label="Clear search"
+                    >✕</button>
+                  )}
+                </div>
                 <button className="btn btn-primary" onClick={() => setNewHostOpen(true)}>
                   + Custom
                 </button>
