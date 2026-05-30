@@ -58,6 +58,7 @@ export default function FileEditorPanel({ title, content: initialContent, onSave
             theme={themeBase}
             extensions={nginxExtensions}
             height="100%"
+            style={{ height: '100%' }}
             basicSetup={{
               lineNumbers:               true,
               highlightActiveLine:       true,
