@@ -139,6 +139,9 @@ body {
 }
 .search-clear:hover { color: var(--text); }
 
+/* Search bar inside a page body (DNS Config, etc.) */
+.dns-search-bar { margin-bottom: 1.25rem; }
+
 /* ── Banners ── */
 .reload-banner {
   display: flex;

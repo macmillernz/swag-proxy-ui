@@ -12,6 +12,7 @@ export default function DnsConfigPage() {
   const [loading, setLoading] = useState(true)
   const [warning, setWarning] = useState(null)
   const [editing, setEditing] = useState(null)  // { filename, content }
+  const [search, setSearch]   = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -49,19 +50,42 @@ export default function DnsConfigPage() {
   if (loading) return <div className="loading-state">Loading...</div>
 
   // Configured (.ini) first, then samples — each group sorted alphabetically
-  const sorted = [...files].sort((a, b) => {
-    if (a.is_sample !== b.is_sample) return a.is_sample ? 1 : -1
-    return a.filename.localeCompare(b.filename)
-  })
+  const sorted = [...files]
+    .filter(f => !search || providerName(f.filename).toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      if (a.is_sample !== b.is_sample) return a.is_sample ? 1 : -1
+      return a.filename.localeCompare(b.filename)
+    })
 
   return (
     <>
       {warning && <div className="warning-banner">{warning}</div>}
 
+      <div className="dns-search-bar">
+        <div className="search-wrap">
+          <input
+            type="search"
+            className="search-input"
+            placeholder="Search providers…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              className="search-clear"
+              onClick={() => setSearch('')}
+              aria-label="Clear search"
+            >✕</button>
+          )}
+        </div>
+      </div>
+
       {sorted.length === 0 ? (
         <div className="empty-state">
-          <p>No DNS config files found.</p>
-          <p>Check that <code>/config/dns-conf</code> is mounted correctly.</p>
+          {files.length === 0
+            ? <><p>No DNS config files found.</p><p>Check that <code>/config/dns-conf</code> is mounted correctly.</p></>
+            : <p>No providers match "{search}".</p>
+          }
         </div>
       ) : (
         <div className="host-grid">

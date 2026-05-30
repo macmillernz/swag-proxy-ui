@@ -28,7 +28,7 @@ const FILES = [
   {
     id:          'default.conf',
     apiGroup:    'site-confs',
-    description: 'Default HTTPS site configuration',
+    description: 'Default site configuration',
   },
 ]
 
