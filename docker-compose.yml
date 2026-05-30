@@ -5,16 +5,15 @@ services:
     ports:
       - "9000:8000"
     volumes:
-      # Mount the full nginx config directory — covers proxy-confs/ and the editable conf files
-      - /opt/appdata/swag/nginx:/config/nginx:rw
-      # DNS credential files for ACME DNS challenge
-      - /opt/appdata/swag/dns-conf:/config/dns-conf:rw
+      # Single mount — gives access to nginx/, dns-conf/, site-confs/ etc.
+      - /opt/appdata/swag:/config:rw
       # Docker socket — needed for the Reload nginx button
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - PROXY_CONF_DIR=/config/nginx/proxy-confs
       - NGINX_CONF_DIR=/config/nginx
       - DNS_CONF_DIR=/config/dns-conf
+      - SITE_CONF_DIR=/config/nginx/site-confs
       # Name of your SWAG container (default: swag)
       - SWAG_CONTAINER_NAME=swag
     # Optional: join the same network as SWAG so container names resolve

@@ -10,6 +10,7 @@ from pathlib import Path
 PROXY_CONF_DIR = Path(os.getenv("PROXY_CONF_DIR", "/config/nginx/proxy-confs"))
 NGINX_CONF_DIR = Path(os.getenv("NGINX_CONF_DIR", "/config/nginx"))
 DNS_CONF_DIR   = Path(os.getenv("DNS_CONF_DIR",   "/config/dns-conf"))
+SITE_CONF_DIR  = Path(os.getenv("SITE_CONF_DIR",  "/config/nginx/site-confs"))
 SWAG_CONTAINER = os.getenv("SWAG_CONTAINER_NAME", "swag")
 EDITABLE_CONF_FILES = {"nginx.conf", "proxy.conf", "resolver.conf", "ssl.conf"}
 
@@ -592,6 +593,47 @@ def update_dns_config(filename: str, body: ConfigFileUpdate):
     return {"filename": filename, "message": "saved"}
 
 
+# ── Site conf endpoints ───────────────────────────────────────────────────────
+
+def _site_path(filename: str) -> Path:
+    """Resolve and validate a site-confs filename (no path traversal)."""
+    if not filename or "/" in filename or "\\" in filename:
+        raise HTTPException(400, detail="Invalid filename")
+    path = SITE_CONF_DIR / filename
+    if not path.resolve().is_relative_to(SITE_CONF_DIR.resolve()):
+        raise HTTPException(400, detail="Invalid filename")
+    return path
+
+
+@app.get("/api/site-confs")
+def list_site_confs():
+    if not SITE_CONF_DIR.exists():
+        return {"files": [], "warning": f"Site conf directory not found: {SITE_CONF_DIR}"}
+    files = [
+        {"filename": p.name}
+        for p in sorted(SITE_CONF_DIR.iterdir())
+        if p.is_file()
+    ]
+    return {"files": files}
+
+
+@app.get("/api/site-confs/{filename}")
+def get_site_conf(filename: str):
+    path = _site_path(filename)
+    if not path.exists():
+        raise HTTPException(404, detail=f"{filename} not found")
+    return {"filename": filename, "content": path.read_text()}
+
+
+@app.put("/api/site-confs/{filename}")
+def update_site_conf(filename: str, body: ConfigFileUpdate):
+    path = _site_path(filename)
+    if not path.exists():
+        raise HTTPException(404, detail=f"{filename} not found")
+    path.write_text(body.content)
+    return {"filename": filename, "message": "saved"}
+
+
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/health")
@@ -604,6 +646,8 @@ def health():
         "nginx_conf_dir_exists": NGINX_CONF_DIR.exists(),
         "dns_conf_dir": str(DNS_CONF_DIR),
         "dns_conf_dir_exists": DNS_CONF_DIR.exists(),
+        "site_conf_dir": str(SITE_CONF_DIR),
+        "site_conf_dir_exists": SITE_CONF_DIR.exists(),
         "docker_available": docker_sdk is not None,
         "swag_container": SWAG_CONTAINER,
     }
