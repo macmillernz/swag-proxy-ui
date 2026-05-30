@@ -8,7 +8,6 @@ const ProxyHostEditor  = lazy(() => import('./components/ProxyHostEditor.jsx'))
 const ConfigFilesPage  = lazy(() => import('./components/ConfigFilesPage.jsx'))
 const AuthConfigPage   = lazy(() => import('./components/AuthConfigPage.jsx'))
 const DnsConfigPage    = lazy(() => import('./components/DnsConfigPage.jsx'))
-const SiteConfigPage   = lazy(() => import('./components/SiteConfigPage.jsx'))
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -204,15 +203,6 @@ export default function App() {
                 DNS Config
               </button>
             </li>
-            <li>
-              <button
-                className={`nav-item ${page === 'site-config' ? 'active' : ''}`}
-                onClick={() => setPage('site-config')}
-              >
-                <span className="nav-icon">⊡</span>
-                Site Config
-              </button>
-            </li>
           </ul>
         </nav>
 
@@ -323,19 +313,6 @@ export default function App() {
           </>
         )}
 
-        {page === 'site-config' && (
-          <>
-            <header className="page-header">
-              <div>
-                <h1 className="page-title">Site Config</h1>
-                <p className="page-subtitle">Edit nginx site configuration files</p>
-              </div>
-            </header>
-            <Suspense fallback={<div className="loading-state">Loading...</div>}>
-              <SiteConfigPage />
-            </Suspense>
-          </>
-        )}
       </main>
 
       {newHostOpen && (

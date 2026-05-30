@@ -3,6 +3,7 @@ import FileEditorPanel from './FileEditorPanel.jsx'
 
 const API = import.meta.env.VITE_API_URL || ''
 
+// apiGroup controls which backend route is used (defaults to 'nginx-configs')
 const FILES = [
   {
     id:          'nginx.conf',
@@ -24,19 +25,25 @@ const FILES = [
     description: 'SSL/TLS settings shared by all hosts',
     warning:     'Changes here affect all SSL termination.',
   },
+  {
+    id:          'default.conf',
+    apiGroup:    'site-confs',
+    description: 'Default HTTPS site configuration',
+  },
 ]
 
 export default function ConfigFilesPage({ onSave }) {
   const [contents, setContents] = useState({})
   const [loading, setLoading]   = useState(true)
-  const [editing, setEditing]   = useState(null) // { id }
+  const [editing, setEditing]   = useState(null) // { id, apiGroup }
 
   const loadAll = useCallback(async () => {
     setLoading(true)
     const result = {}
     for (const f of FILES) {
+      const group = f.apiGroup ?? 'nginx-configs'
       try {
-        const res = await fetch(`${API}/api/nginx-configs/${f.id}`)
+        const res = await fetch(`${API}/api/${group}/${f.id}`)
         result[f.id] = res.ok ? (await res.json()).content : null
       } catch {
         result[f.id] = null
@@ -49,8 +56,9 @@ export default function ConfigFilesPage({ onSave }) {
   useEffect(() => { loadAll() }, [loadAll])
 
   const handleSave = async (newContent) => {
-    const { id } = editing
-    const res = await fetch(`${API}/api/nginx-configs/${id}`, {
+    const { id, apiGroup } = editing
+    const group = apiGroup ?? 'nginx-configs'
+    const res = await fetch(`${API}/api/${group}/${id}`, {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ content: newContent }),
@@ -95,7 +103,7 @@ export default function ConfigFilesPage({ onSave }) {
                 ) : (
                   <button
                     className="btn btn-sm btn-ghost"
-                    onClick={() => setEditing({ id: file.id })}
+                    onClick={() => setEditing({ id: file.id, apiGroup: file.apiGroup })}
                   >
                     Edit
                   </button>
