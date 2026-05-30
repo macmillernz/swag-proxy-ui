@@ -8,6 +8,7 @@ const ProxyHostEditor  = lazy(() => import('./components/ProxyHostEditor.jsx'))
 const ConfigFilesPage  = lazy(() => import('./components/ConfigFilesPage.jsx'))
 const AuthConfigPage   = lazy(() => import('./components/AuthConfigPage.jsx'))
 const DnsConfigPage    = lazy(() => import('./components/DnsConfigPage.jsx'))
+const Fail2banPage     = lazy(() => import('./components/Fail2banPage.jsx'))
 const LogsPage         = lazy(() => import('./components/LogsPage.jsx'))
 
 const API = import.meta.env.VITE_API_URL || ''
@@ -206,6 +207,15 @@ export default function App() {
             </li>
             <li>
               <button
+                className={`nav-item ${page === 'fail2ban' ? 'active' : ''}`}
+                onClick={() => setPage('fail2ban')}
+              >
+                <span className="nav-icon">⛨</span>
+                Fail2ban
+              </button>
+            </li>
+            <li>
+              <button
                 className={`nav-item ${page === 'logs' ? 'active' : ''}`}
                 onClick={() => setPage('logs')}
               >
@@ -319,6 +329,20 @@ export default function App() {
             </header>
             <Suspense fallback={<div className="loading-state">Loading...</div>}>
               <DnsConfigPage />
+            </Suspense>
+          </>
+        )}
+
+        {page === 'fail2ban' && (
+          <>
+            <header className="page-header">
+              <div>
+                <h1 className="page-title">Fail2ban</h1>
+                <p className="page-subtitle">View jails, manage bans and edit fail2ban config</p>
+              </div>
+            </header>
+            <Suspense fallback={<div className="loading-state">Loading...</div>}>
+              <Fail2banPage />
             </Suspense>
           </>
         )}

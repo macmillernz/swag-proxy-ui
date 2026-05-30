@@ -12,6 +12,7 @@ NGINX_CONF_DIR = Path("/config/nginx")
 DNS_CONF_DIR   = Path("/config/dns-conf")
 SITE_CONF_DIR  = Path("/config/nginx/site-confs")
 LOG_DIR        = Path("/config/log")
+FAIL2BAN_DIR   = Path("/config/fail2ban")
 SWAG_CONTAINER = os.getenv("SWAG_CONTAINER_NAME", "swag")
 
 # Maximum bytes to return from a single log file (tail)
@@ -253,6 +254,10 @@ class ConfigFileUpdate(BaseModel):
 
 class NewConfigFile(BaseModel):
     filename: str
+
+
+class IpRequest(BaseModel):
+    ip: str
 
 
 # ── File helpers ──────────────────────────────────────────────────────────────
@@ -702,6 +707,128 @@ def get_log(filepath: str):
         "size":      size,
         "truncated": truncated,
     }
+
+
+# ── Fail2ban endpoints ────────────────────────────────────────────────────────
+
+def _fail2ban_client(args: list[str]) -> str:
+    """Run fail2ban-client inside the SWAG container; return stdout, raise on error."""
+    if docker_sdk is None:
+        raise HTTPException(503, detail="Docker SDK not installed in this image")
+    try:
+        client = docker_sdk.from_env()
+    except Exception as e:
+        raise HTTPException(503, detail=f"Docker socket unavailable. Mount /var/run/docker.sock:ro\n{e}")
+    try:
+        container = client.containers.get(SWAG_CONTAINER)
+    except Exception:
+        raise HTTPException(503, detail=f"Container '{SWAG_CONTAINER}' not found. Set SWAG_CONTAINER_NAME env var.")
+
+    res = container.exec_run(["fail2ban-client"] + args)
+    out = res.output.decode(errors="replace") if res.output else ""
+    if res.exit_code != 0:
+        raise HTTPException(502, detail=f"fail2ban-client {' '.join(args)} failed:\n{out.strip()}")
+    return out
+
+
+def _parse_jail_list(output: str) -> list[str]:
+    m = re.search(r"Jail list:\s*(.*)", output)
+    if not m:
+        return []
+    return [j.strip() for j in m.group(1).split(",") if j.strip()]
+
+
+def _parse_jail_status(output: str) -> dict:
+    def num(label: str) -> int:
+        m = re.search(rf"{label}:\s*(\d+)", output)
+        return int(m.group(1)) if m else 0
+
+    banned_m = re.search(r"Banned IP list:\s*(.*)", output)
+    banned_ips = banned_m.group(1).split() if (banned_m and banned_m.group(1).strip()) else []
+
+    file_m = re.search(r"File list:\s*(.*)", output)
+    file_list = file_m.group(1).strip() if file_m else ""
+
+    return {
+        "currently_failed": num("Currently failed"),
+        "total_failed":     num("Total failed"),
+        "currently_banned": num("Currently banned"),
+        "total_banned":     num("Total banned"),
+        "banned_ips":       banned_ips,
+        "file_list":        file_list,
+    }
+
+
+def _validate_ip(ip: str) -> str:
+    ip = ip.strip()
+    # Allow IPv4/IPv6 chars + CIDR; reject anything that could be an arg/flag
+    if not ip or not re.fullmatch(r"[0-9a-fA-F:.\/]+", ip):
+        raise HTTPException(400, detail="Invalid IP address")
+    return ip
+
+
+@app.get("/api/fail2ban/status")
+def fail2ban_status():
+    overview = _fail2ban_client(["status"])
+    jails = []
+    for name in _parse_jail_list(overview):
+        detail = _fail2ban_client(["status", name])
+        jails.append({"name": name, **_parse_jail_status(detail)})
+    return {"jails": jails}
+
+
+@app.post("/api/fail2ban/{jail}/unban")
+def fail2ban_unban(jail: str, body: IpRequest):
+    ip = _validate_ip(body.ip)
+    _fail2ban_client(["set", jail, "unbanip", ip])
+    return {"jail": jail, "ip": ip, "message": "unbanned"}
+
+
+@app.post("/api/fail2ban/{jail}/ban")
+def fail2ban_ban(jail: str, body: IpRequest):
+    ip = _validate_ip(body.ip)
+    _fail2ban_client(["set", jail, "banip", ip])
+    return {"jail": jail, "ip": ip, "message": "banned"}
+
+
+# ── Fail2ban config files ─────────────────────────────────────────────────────
+
+def _fail2ban_conf_path(filepath: str) -> Path:
+    if not filepath or ".." in filepath or filepath.startswith("/") or "\\" in filepath:
+        raise HTTPException(400, detail="Invalid path")
+    path = (FAIL2BAN_DIR / filepath).resolve()
+    if not path.is_relative_to(FAIL2BAN_DIR.resolve()):
+        raise HTTPException(400, detail="Invalid path")
+    return path
+
+
+@app.get("/api/fail2ban-configs")
+def list_fail2ban_configs():
+    if not FAIL2BAN_DIR.exists():
+        return {"files": [], "warning": f"fail2ban directory not found: {FAIL2BAN_DIR}"}
+    files = []
+    for pattern in ("*.local", "*.conf"):
+        for p in sorted(FAIL2BAN_DIR.glob(pattern)):
+            if p.is_file():
+                files.append({"filepath": p.name})
+    return {"files": files}
+
+
+@app.get("/api/fail2ban-configs/{filepath:path}")
+def get_fail2ban_config(filepath: str):
+    path = _fail2ban_conf_path(filepath)
+    if not path.exists() or not path.is_file():
+        raise HTTPException(404, detail=f"{filepath} not found")
+    return {"filepath": filepath, "content": path.read_text()}
+
+
+@app.put("/api/fail2ban-configs/{filepath:path}")
+def update_fail2ban_config(filepath: str, body: ConfigFileUpdate):
+    path = _fail2ban_conf_path(filepath)
+    if not path.exists() or not path.is_file():
+        raise HTTPException(404, detail=f"{filepath} not found")
+    path.write_text(body.content)
+    return {"filepath": filepath, "message": "saved"}
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

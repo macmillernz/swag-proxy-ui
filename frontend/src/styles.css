@@ -149,6 +149,55 @@ body {
   margin-bottom: 1.25rem;
 }
 
+/* ── Fail2ban ── */
+.f2b-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text2);
+  margin-bottom: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.f2b-jail-card { gap: 0.6rem; }
+.f2b-stats {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--text2);
+}
+.f2b-stats b { color: var(--text); font-weight: 600; }
+.f2b-stat-sep { color: var(--text3); }
+.f2b-stat-muted { color: var(--text3); font-size: 12px; }
+
+.f2b-banned-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.6rem;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.f2b-banned-ip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.f2b-ip {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text);
+}
+.f2b-ban-row { display: flex; gap: 6px; width: 100%; }
+.f2b-ban-input { width: auto; flex: 1; }
+
+.badge-status-banned { background: rgba(226,92,92,0.15); color: var(--danger); }
+.status-dot.banned { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+
 /* ── Log viewer ── */
 .log-content {
   overflow-y: auto;       /* scrolls within the grid 1fr row */
