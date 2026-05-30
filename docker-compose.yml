@@ -10,10 +10,6 @@ services:
       # Docker socket — needed for the Reload nginx button
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      - PROXY_CONF_DIR=/config/nginx/proxy-confs
-      - NGINX_CONF_DIR=/config/nginx
-      - DNS_CONF_DIR=/config/dns-conf
-      - SITE_CONF_DIR=/config/nginx/site-confs
       # Name of your SWAG container (default: swag)
       - SWAG_CONTAINER_NAME=swag
     # Optional: join the same network as SWAG so container names resolve

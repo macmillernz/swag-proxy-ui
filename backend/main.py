@@ -7,10 +7,10 @@ import os
 import re
 from pathlib import Path
 
-PROXY_CONF_DIR = Path(os.getenv("PROXY_CONF_DIR", "/config/nginx/proxy-confs"))
-NGINX_CONF_DIR = Path(os.getenv("NGINX_CONF_DIR", "/config/nginx"))
-DNS_CONF_DIR   = Path(os.getenv("DNS_CONF_DIR",   "/config/dns-conf"))
-SITE_CONF_DIR  = Path(os.getenv("SITE_CONF_DIR",  "/config/nginx/site-confs"))
+PROXY_CONF_DIR = Path("/config/nginx/proxy-confs")
+NGINX_CONF_DIR = Path("/config/nginx")
+DNS_CONF_DIR   = Path("/config/dns-conf")
+SITE_CONF_DIR  = Path("/config/nginx/site-confs")
 SWAG_CONTAINER = os.getenv("SWAG_CONTAINER_NAME", "swag")
 EDITABLE_CONF_FILES = {"nginx.conf", "proxy.conf", "resolver.conf", "ssl.conf"}
 
