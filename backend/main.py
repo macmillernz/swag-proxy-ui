@@ -9,6 +9,7 @@ from pathlib import Path
 
 PROXY_CONF_DIR = Path(os.getenv("PROXY_CONF_DIR", "/config/nginx/proxy-confs"))
 NGINX_CONF_DIR = Path(os.getenv("NGINX_CONF_DIR", "/config/nginx"))
+DNS_CONF_DIR   = Path(os.getenv("DNS_CONF_DIR",   "/config/dns-conf"))
 SWAG_CONTAINER = os.getenv("SWAG_CONTAINER_NAME", "swag")
 EDITABLE_CONF_FILES = {"nginx.conf", "proxy.conf", "resolver.conf", "ssl.conf"}
 
@@ -548,6 +549,49 @@ def disable_auth_config(provider: str, level: str):
     return {"provider": provider, "level": level, "message": "disabled"}
 
 
+# ── DNS config endpoints ──────────────────────────────────────────────────────
+
+def _dns_path(filename: str) -> Path:
+    """Resolve and validate a dns-conf filename (no path traversal)."""
+    if not filename or "/" in filename or "\\" in filename:
+        raise HTTPException(400, detail="Invalid filename")
+    path = DNS_CONF_DIR / filename
+    # Ensure the resolved path stays inside the dns-conf directory
+    if not path.resolve().is_relative_to(DNS_CONF_DIR.resolve()):
+        raise HTTPException(400, detail="Invalid filename")
+    return path
+
+
+@app.get("/api/dns-configs")
+def list_dns_configs():
+    if not DNS_CONF_DIR.exists():
+        return {"files": [], "warning": f"DNS config directory not found: {DNS_CONF_DIR}"}
+    files = []
+    for path in sorted(DNS_CONF_DIR.iterdir()):
+        if not path.is_file():
+            continue
+        is_sample = path.name.endswith(".sample")
+        files.append({"filename": path.name, "is_sample": is_sample})
+    return {"files": files}
+
+
+@app.get("/api/dns-configs/{filename}")
+def get_dns_config(filename: str):
+    path = _dns_path(filename)
+    if not path.exists():
+        raise HTTPException(404, detail=f"{filename} not found")
+    return {"filename": filename, "content": path.read_text()}
+
+
+@app.put("/api/dns-configs/{filename}")
+def update_dns_config(filename: str, body: ConfigFileUpdate):
+    path = _dns_path(filename)
+    if not path.exists():
+        raise HTTPException(404, detail=f"{filename} not found")
+    path.write_text(body.content)
+    return {"filename": filename, "message": "saved"}
+
+
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/health")
@@ -558,6 +602,8 @@ def health():
         "conf_dir_exists": PROXY_CONF_DIR.exists(),
         "nginx_conf_dir": str(NGINX_CONF_DIR),
         "nginx_conf_dir_exists": NGINX_CONF_DIR.exists(),
+        "dns_conf_dir": str(DNS_CONF_DIR),
+        "dns_conf_dir_exists": DNS_CONF_DIR.exists(),
         "docker_available": docker_sdk is not None,
         "swag_container": SWAG_CONTAINER,
     }

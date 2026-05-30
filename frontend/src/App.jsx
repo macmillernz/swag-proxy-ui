@@ -7,6 +7,7 @@ import NewHostModal from './components/NewHostModal.jsx'
 const ProxyHostEditor  = lazy(() => import('./components/ProxyHostEditor.jsx'))
 const ConfigFilesPage  = lazy(() => import('./components/ConfigFilesPage.jsx'))
 const AuthConfigPage   = lazy(() => import('./components/AuthConfigPage.jsx'))
+const DnsConfigPage    = lazy(() => import('./components/DnsConfigPage.jsx'))
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -193,6 +194,15 @@ export default function App() {
                 Auth Config
               </button>
             </li>
+            <li>
+              <button
+                className={`nav-item ${page === 'dns-config' ? 'active' : ''}`}
+                onClick={() => setPage('dns-config')}
+              >
+                <span className="nav-icon">◎</span>
+                DNS Config
+              </button>
+            </li>
           </ul>
         </nav>
 
@@ -276,6 +286,20 @@ export default function App() {
             </header>
             <Suspense fallback={<div className="loading-state">Loading editor...</div>}>
               <AuthConfigPage />
+            </Suspense>
+          </>
+        )}
+
+        {page === 'dns-config' && (
+          <>
+            <header className="page-header">
+              <div>
+                <h1 className="page-title">DNS Config</h1>
+                <p className="page-subtitle">Edit DNS provider credential files for ACME DNS challenge</p>
+              </div>
+            </header>
+            <Suspense fallback={<div className="loading-state">Loading...</div>}>
+              <DnsConfigPage />
             </Suspense>
           </>
         )}
