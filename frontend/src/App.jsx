@@ -192,7 +192,7 @@ export default function App() {
                 className={`nav-item ${page === 'auth-config' ? 'active' : ''}`}
                 onClick={() => setPage('auth-config')}
               >
-                <span className="nav-icon">🔒</span>
+                <span className="nav-icon">⚿</span>
                 Auth Config
               </button>
             </li>

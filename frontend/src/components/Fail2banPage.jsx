@@ -211,6 +211,45 @@ export default function Fail2banPage() {
         <button className="btn btn-ghost btn-sm" onClick={loadAll}>↺ Refresh</button>
       </div>
 
+      <details className="f2b-help">
+        <summary>How to protect another container with fail2ban</summary>
+        <div className="f2b-help-body">
+          <p>
+            fail2ban runs <em>inside</em> SWAG, so it can only ban based on logs it can read.
+            To watch another app's logs:
+          </p>
+          <ol>
+            <li>
+              <b>Give SWAG the app's log.</b> Bind-mount the app's log file into the SWAG
+              container under <code>/config/log/&lt;app&gt;/</code> (e.g. add
+              <code> - /opt/appdata/&lt;app&gt;/log:/config/log/&lt;app&gt;</code> to SWAG's
+              <code> volumes</code>).
+            </li>
+            <li>
+              <b>Add a filter.</b> Create <code>filter.d/&lt;app&gt;.conf</code> (Config section
+              below) with a <code>failregex</code> that matches the app's failed-login lines.
+            </li>
+            <li>
+              <b>Add a jail</b> to <code>jail.local</code>:
+              <pre>{`[<app>]
+enabled  = true
+filter   = <app>
+logpath  = /config/log/<app>/app.log
+maxretry = 5
+bantime  = 1h`}</pre>
+            </li>
+            <li>
+              <b>Reload</b> — restart the SWAG container (or run
+              <code> fail2ban-client reload</code>), then hit <b>Refresh</b> here.
+            </li>
+          </ol>
+          <p className="f2b-help-note">
+            Bans are enforced at SWAG's firewall, so the app's traffic must pass through SWAG's
+            reverse proxy for a ban to take effect.
+          </p>
+        </div>
+      </details>
+
       <h2 className="f2b-section-title">Jails</h2>
       {jails.length === 0 ? (
         <div className="empty-state"><p>No active jails.</p></div>

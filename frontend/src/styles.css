@@ -198,6 +198,55 @@ body {
 .badge-status-banned { background: rgba(226,92,92,0.15); color: var(--danger); }
 .status-dot.banned { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
 
+/* fail2ban integration help */
+.f2b-help {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+}
+.f2b-help > summary {
+  cursor: pointer;
+  padding: 0.75rem 1rem;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text2);
+  list-style: none;
+  user-select: none;
+}
+.f2b-help > summary::-webkit-details-marker { display: none; }
+.f2b-help > summary::before { content: '▸ '; color: var(--text3); }
+.f2b-help[open] > summary::before { content: '▾ '; }
+.f2b-help > summary:hover { color: var(--text); }
+.f2b-help-body {
+  padding: 0 1rem 1rem;
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.6;
+}
+.f2b-help-body ol { margin: 0.5rem 0 0.5rem 1.2rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.f2b-help-body code {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  background: var(--bg3);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text);
+}
+.f2b-help-body pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.8rem;
+  margin: 0.4rem 0;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+  overflow-x: auto;
+}
+.f2b-help-note { color: var(--text3); font-size: 12px; margin-top: 0.5rem; }
+
 /* ── Log viewer ── */
 .log-content {
   overflow-y: auto;       /* scrolls within the grid 1fr row */
