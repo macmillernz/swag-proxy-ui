@@ -248,18 +248,63 @@ body {
 .f2b-help-note { color: var(--text3); font-size: 12px; margin-top: 0.5rem; }
 
 /* ── Log viewer ── */
+/* log-body is the 1fr grid cell of .panel-wide: search bar (auto) + content (flex) */
+.log-body {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.log-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.log-match-count {
+  font-size: 12px;
+  color: var(--text3);
+  white-space: nowrap;
+}
 .log-content {
-  overflow-y: auto;       /* scrolls within the grid 1fr row */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   background: #18181c;
   padding: 0.75rem 1rem;
   margin: 0;
   font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.55;
   color: var(--text2);
+}
+.log-line {
+  display: block;
   white-space: pre-wrap;
   word-break: break-all;
+  padding: 0 0.3rem;
+  border-radius: 2px;
 }
+.log-line.sev-error { color: #e89a9a; background: rgba(226,92,92,0.07); }
+.log-line.sev-warn  { color: #e2c188; background: rgba(226,164,92,0.06); }
+
+/* token colours */
+.log-ts        { color: #6f8fcf; }            /* timestamps */
+.log-ip        { color: #c9a0dc; }            /* IP addresses */
+.log-str       { color: #7cba78; }            /* quoted strings */
+.log-lvl-error { color: #e25c5c; font-weight: 600; }
+.log-lvl-warn  { color: #e2a45c; font-weight: 600; }
+.log-lvl-info  { color: #5cb87a; font-weight: 600; }
+.log-lvl-debug { color: #7a7975; font-weight: 600; }
+
+.log-mark {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 .log-placeholder {
   color: var(--text3);
   font-style: italic;
