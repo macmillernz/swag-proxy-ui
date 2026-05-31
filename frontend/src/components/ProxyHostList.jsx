@@ -41,26 +41,18 @@ export default function ProxyHostList({ hosts, loading, onEdit, onToggle, onDele
 
           <div className="host-actions">
             {host.is_sample ? (
-              <button
-                className="btn btn-sm btn-primary"
-                onClick={() => onEnableSample(host)}
-              >
+              <button className="btn btn-sm btn-success" onClick={() => onEnableSample(host)}>
                 Enable
               </button>
             ) : (
-              <>
-                <button className="btn btn-sm btn-ghost" onClick={() => onEdit(host)}>Edit</button>
-                <button
-                  className={`btn btn-sm ${host.enabled ? 'btn-warning' : 'btn-success'}`}
-                  onClick={() => onToggle(host.name)}
-                >
-                  {host.enabled ? 'Disable' : 'Enable'}
-                </button>
-                <button className="btn btn-sm btn-danger" onClick={() => onDelete(host.name)}>
-                  Delete
-                </button>
-              </>
+              <button className="btn btn-sm btn-warning" onClick={() => onToggle(host.name)}>
+                Disable
+              </button>
             )}
+            <button className="btn btn-sm btn-ghost" onClick={() => onEdit(host)}>Edit</button>
+            <button className="btn btn-sm btn-danger" onClick={() => onDelete(host.name)}>
+              Delete
+            </button>
           </div>
         </div>
       ))}

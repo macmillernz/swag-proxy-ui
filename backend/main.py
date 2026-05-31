@@ -360,7 +360,11 @@ def delete_proxy_host(name: str):
     result = find_conf(name)
     if not result:
         raise HTTPException(404, detail=f"Proxy host '{name}' not found")
-    result[0].unlink()
+    # Remove every variant (.conf, .conf.disabled, .conf.sample) so nothing is orphaned
+    for suffix, *_ in CONF_SUFFIXES:
+        variant = PROXY_CONF_DIR / f"{name}{suffix}"
+        if variant.exists():
+            variant.unlink()
 
 
 @app.post("/api/proxy-hosts/{name}/toggle")
@@ -371,8 +375,16 @@ def toggle_proxy_host(name: str):
     path, type_, enabled, is_sample = result
     if is_sample:
         raise HTTPException(400, detail="Use enable-sample to activate a sample file")
-    new_name = f"{name}.{type_}.conf" if not enabled else f"{name}.{type_}.conf.disabled"
-    path.rename(PROXY_CONF_DIR / new_name)
+    if enabled:
+        # Disable → turn the active conf into a sample.
+        # Drop any pre-existing sample (e.g. SWAG's shipped template) first.
+        sample = PROXY_CONF_DIR / f"{name}.{type_}.conf.sample"
+        if sample.exists():
+            sample.unlink()
+        path.rename(sample)
+    else:
+        # Legacy .conf.disabled → re-enable.
+        path.rename(PROXY_CONF_DIR / f"{name}.{type_}.conf")
     return {"name": name, "enabled": not enabled}
 
 

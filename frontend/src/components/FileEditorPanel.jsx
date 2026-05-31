@@ -13,7 +13,6 @@ import { themeBase, nginxExtensions } from '../lib/nginxEditor.js'
  */
 export default function FileEditorPanel({ title, content: initialContent, onSave, onClose }) {
   const [content, setContent] = useState(initialContent)
-  const [saved, setSaved]     = useState(initialContent)
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState(null)
 
@@ -23,7 +22,7 @@ export default function FileEditorPanel({ title, content: initialContent, onSave
     return () => document.body.classList.remove('modal-open')
   }, [])
 
-  const isDirty = content !== saved
+  const isDirty = content !== initialContent
 
   const handleChange = useCallback(val => {
     setContent(val)
@@ -35,11 +34,10 @@ export default function FileEditorPanel({ title, content: initialContent, onSave
     setError(null)
     try {
       await onSave(content)
-      setSaved(content)
+      onClose()           // close the flyout on a successful save
     } catch (err) {
       setError(err.message || 'Save failed')
-    } finally {
-      setSaving(false)
+      setSaving(false)    // re-enable on failure (success unmounts the panel)
     }
   }
 
