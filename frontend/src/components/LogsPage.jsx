@@ -4,8 +4,23 @@ const API = import.meta.env.VITE_API_URL || ''
 
 // ── Log line colouring ────────────────────────────────────────────────────────
 
+// Log levels are matched as UPPERCASE standalone words (fail2ban/Python style)
+// or bracketed lowercase (nginx style: [error]). This avoids false positives
+// from lowercase words inside paths/text, e.g. "/config/log/nginx/error.log".
+const LVL_ERROR = String.raw`\b(?:ERROR|CRIT(?:ICAL)?|FATAL|ALERT|EMERG)\b|\[(?:error|err|crit|alert|emerg)\]`
+const LVL_WARN  = String.raw`\b(?:WARNING|WARN)\b|\[(?:warn|warning)\]`
+const LVL_INFO  = String.raw`\b(?:NOTICE|INFO)\b|\[(?:notice|info)\]`
+const LVL_DEBUG = String.raw`\b(?:DEBUG|TRACE)\b|\[(?:debug|trace)\]`
+
 // Token groups: 1-2 timestamp, 3 IP, 4 quoted string, 5 error, 6 warn, 7 info, 8 debug
-const TOKEN_RE = /(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?)|(\[\d{2}\/[A-Za-z]{3}\/\d{4}:[^\]]*\])|(\b\d{1,3}(?:\.\d{1,3}){3}\b)|("[^"]*")|(\b(?:ERROR|ERR|CRIT(?:ICAL)?|FATAL|ALERT|EMERG|FAILED?)\b)|(\b(?:WARN(?:ING)?)\b)|(\b(?:NOTICE|INFO)\b)|(\b(?:DEBUG|TRACE)\b)/gi
+const TOKEN_RE = new RegExp(
+  String.raw`(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?)` +
+  String.raw`|(\[\d{2}\/[A-Za-z]{3}\/\d{4}:[^\]]*\])` +
+  String.raw`|(\b\d{1,3}(?:\.\d{1,3}){3}\b)` +
+  String.raw`|("[^"]*")` +
+  `|(${LVL_ERROR})|(${LVL_WARN})|(${LVL_INFO})|(${LVL_DEBUG})`,
+  'g'
+)
 
 const GROUP_CLASS = {
   1: 'log-ts', 2: 'log-ts', 3: 'log-ip', 4: 'log-str',
@@ -13,8 +28,8 @@ const GROUP_CLASS = {
 }
 
 function lineSeverity(line) {
-  if (/\b(?:ERROR|ERR|CRIT(?:ICAL)?|FATAL|ALERT|EMERG|FAILED?)\b/i.test(line)) return 'sev-error'
-  if (/\b(?:WARN(?:ING)?)\b/i.test(line)) return 'sev-warn'
+  if (new RegExp(LVL_ERROR).test(line)) return 'sev-error'
+  if (new RegExp(LVL_WARN).test(line)) return 'sev-warn'
   return ''
 }
 
