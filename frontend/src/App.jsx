@@ -3,6 +3,7 @@ import ProxyHostList from './components/ProxyHostList.jsx'
 import ConfirmModal from './components/ConfirmModal.jsx'
 import NewHostModal from './components/NewHostModal.jsx'
 
+const DashboardPage    = lazy(() => import('./components/DashboardPage.jsx'))
 // Lazy-load everything that pulls in the CodeMirror bundle
 const ProxyHostEditor  = lazy(() => import('./components/ProxyHostEditor.jsx'))
 const ConfigFilesPage  = lazy(() => import('./components/ConfigFilesPage.jsx'))
@@ -14,7 +15,7 @@ const LogsPage         = lazy(() => import('./components/LogsPage.jsx'))
 const API = import.meta.env.VITE_API_URL || ''
 
 export default function App() {
-  const [page, setPage] = useState('proxy-hosts')
+  const [page, setPage] = useState('dashboard')
 
   // Proxy hosts state
   const [hosts, setHosts]           = useState([])
@@ -155,6 +156,15 @@ export default function App() {
           <ul className="nav-list">
             <li>
               <button
+                className={`nav-item ${page === 'dashboard' ? 'active' : ''}`}
+                onClick={() => setPage('dashboard')}
+              >
+                <span className="nav-icon">◫</span>
+                Dashboard
+              </button>
+            </li>
+            <li>
+              <button
                 className={`nav-item ${page === 'proxy-hosts' ? 'active' : ''}`}
                 onClick={() => setPage('proxy-hosts')}
               >
@@ -233,6 +243,20 @@ export default function App() {
       </aside>
 
       <main className="main-content">
+        {page === 'dashboard' && (
+          <>
+            <header className="page-header">
+              <div>
+                <h1 className="page-title">Dashboard</h1>
+                <p className="page-subtitle">Proxy status, security and traffic at a glance</p>
+              </div>
+            </header>
+            <Suspense fallback={<div className="loading-state">Loading...</div>}>
+              <DashboardPage />
+            </Suspense>
+          </>
+        )}
+
         {page === 'proxy-hosts' && (
           <>
             <header className="page-header">

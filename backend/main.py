@@ -5,15 +5,26 @@ from pydantic import BaseModel
 from typing import Literal, Optional
 import os
 import re
+import ssl
+import time
+import socket
+import sqlite3
+import http.client
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-PROXY_CONF_DIR = Path("/config/nginx/proxy-confs")
-NGINX_CONF_DIR = Path("/config/nginx")
-DNS_CONF_DIR   = Path("/config/dns-conf")
-SITE_CONF_DIR  = Path("/config/nginx/site-confs")
-LOG_DIR        = Path("/config/log")
-FAIL2BAN_DIR   = Path("/config/fail2ban")
-SWAG_CONTAINER = os.getenv("SWAG_CONTAINER_NAME", "swag")
+PROXY_CONF_DIR  = Path("/config/nginx/proxy-confs")
+NGINX_CONF_DIR  = Path("/config/nginx")
+DNS_CONF_DIR    = Path("/config/dns-conf")
+SITE_CONF_DIR   = Path("/config/nginx/site-confs")
+LOG_DIR         = Path("/config/log")
+FAIL2BAN_DIR    = Path("/config/fail2ban")
+FAIL2BAN_DB     = Path("/config/fail2ban/fail2ban.sqlite3")
+LETSENCRYPT_DIR = Path("/config/etc/letsencrypt/live")
+GEOIP_DB        = Path("/config/geoip2db/GeoLite2-City.mmdb")
+ACCESS_LOG      = Path("/config/log/nginx/access.log")
+SWAG_CONTAINER  = os.getenv("SWAG_CONTAINER_NAME", "swag")
 
 # Maximum bytes to return from a single log file (tail)
 LOG_MAX_BYTES = 200 * 1024  # 200 KB
@@ -239,6 +250,11 @@ try:
     import docker as docker_sdk
 except ImportError:
     docker_sdk = None
+
+try:
+    import maxminddb
+except ImportError:
+    maxminddb = None
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -821,6 +837,257 @@ def update_fail2ban_config(filepath: str, body: ConfigFileUpdate):
     return {"filepath": filepath, "message": "saved"}
 
 
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+
+def _cert_info() -> list[dict]:
+    """Parse each Let's Encrypt live cert → domains + expiry."""
+    out = []
+    if not LETSENCRYPT_DIR.exists():
+        return out
+    for d in sorted(LETSENCRYPT_DIR.iterdir()):
+        cert = d / "cert.pem"
+        if not cert.is_file():
+            continue
+        try:
+            decoded = ssl._ssl._test_decode_cert(str(cert))
+            domains = sorted({v for k, v in decoded.get("subjectAltName", ()) if k == "DNS"})
+            not_after = decoded.get("notAfter")
+            expiry = ssl.cert_time_to_seconds(not_after) if not_after else None
+            days = int((expiry - time.time()) / 86400) if expiry else None
+            out.append({
+                "name":    d.name,
+                "domains": domains,
+                "expiry":  expiry,
+                "days":    days,
+            })
+        except Exception:
+            continue
+    return out
+
+
+def _base_domains(certs: list[dict]) -> list[str]:
+    """Base domains used to expand wildcard server_names (e.g. *.example.com → example.com)."""
+    bases: list[str] = []
+    for c in certs:
+        for dom in c["domains"]:
+            base = dom[2:] if dom.startswith("*.") else dom
+            if base not in bases:
+                bases.append(base)
+    return bases
+
+
+# Cache of the active nginx upstream-app discovery
+def _parse_proxy_for_dashboard(path: Path, base_domains: list[str]) -> Optional[dict]:
+    name, type_, enabled, is_sample = parse_conf_filename(path.name)[0:4] if parse_conf_filename(path.name) else (None,)*4
+    if not name or is_sample or not enabled:
+        return None
+    content = path.read_text(errors="replace")
+
+    host  = (re.search(r"set \$upstream_app\s+(\S+);", content) or [None, ""])[1]
+    port  = (re.search(r"set \$upstream_port\s+(\d+);", content) or [None, "80"])[1]
+    proto = (re.search(r"set \$upstream_proto\s+(https?);", content) or [None, "http"])[1]
+    if not host:
+        m = re.search(r"proxy_pass\s+(https?)://([^:/\s;]+)(?::(\d+))?", content)
+        if m:
+            proto, host, port = m.group(1), m.group(2), (m.group(3) or ("443" if m.group(1) == "https" else "80"))
+
+    # auth provider
+    auth = "none"
+    for p in ("authelia", "authentik", "ldap", "tinyauth"):
+        if re.search(rf"/config/nginx/{p}[_-]", content):
+            auth = p
+            break
+
+    # external URL
+    server_name = (re.search(r"server_name\s+([^;]+);", content) or [None, ""])[1].strip().split()[0] if re.search(r"server_name\s+([^;]+);", content) else ""
+    external = None
+    if type_ == "subdomain":
+        if server_name.endswith(".*"):
+            sub = server_name[:-2]
+            external = f"https://{sub}.{base_domains[0]}" if base_domains else None
+        elif server_name and "*" not in server_name:
+            external = f"https://{server_name}"
+    else:  # subfolder
+        m = re.search(r"location\s*\^?~?\s*(/[^\s{]+)", content)
+        loc = m.group(1).rstrip("/") if m else f"/{name}"
+        external = f"https://{base_domains[0]}{loc}" if base_domains else None
+
+    return {
+        "name": name, "type": type_, "auth": auth,
+        "upstream": {"host": host, "port": int(port or 80), "proto": proto},
+        "external": external,
+    }
+
+
+def _probe_internal(host: str, port: int, timeout: float = 1.5) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
+def _probe_external(url: str, timeout: float = 4.0) -> Optional[int]:
+    """Return HTTP status code if the external URL responds, else None."""
+    try:
+        m = re.match(r"https?://([^/]+)(/.*)?$", url)
+        if not m:
+            return None
+        host, path = m.group(1), (m.group(2) or "/")
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        conn = http.client.HTTPSConnection(host, timeout=timeout, context=ctx)
+        conn.request("HEAD", path, headers={"User-Agent": "swag-proxy-ui-dashboard"})
+        resp = conn.getresponse()
+        conn.close()
+        return resp.status
+    except Exception:
+        return None
+
+
+@app.get("/api/dashboard/proxies")
+def dashboard_proxies():
+    if not PROXY_CONF_DIR.exists():
+        return {"proxies": [], "warning": "proxy-confs not found"}
+    certs = _cert_info()
+    bases = _base_domains(certs)
+
+    parsed = []
+    for path in sorted(PROXY_CONF_DIR.iterdir()):
+        info = _parse_proxy_for_dashboard(path, bases)
+        if info:
+            parsed.append(info)
+
+    def probe(info):
+        up = info["upstream"]
+        info["internal_up"] = _probe_internal(up["host"], up["port"]) if up["host"] else False
+        info["external_status"] = _probe_external(info["external"]) if info["external"] else None
+        return info
+
+    with ThreadPoolExecutor(max_workers=20) as ex:
+        proxies = list(ex.map(probe, parsed))
+
+    proxies.sort(key=lambda p: p["name"])
+    return {"proxies": proxies, "base_domains": bases}
+
+
+@app.get("/api/dashboard/certs")
+def dashboard_certs():
+    certs = _cert_info()
+    certs.sort(key=lambda c: (c["days"] if c["days"] is not None else 1e9))
+    return {"certs": certs}
+
+
+@app.get("/api/dashboard/fail2ban")
+def dashboard_fail2ban():
+    if not FAIL2BAN_DB.exists():
+        return {"jails": [], "available": False, "warning": "fail2ban.sqlite3 not found"}
+    try:
+        uri = f"file:{FAIL2BAN_DB}?mode=ro"
+        con = sqlite3.connect(uri, uri=True, timeout=2)
+        cur = con.cursor()
+        # currently-banned IPs live in 'bips'; historical bans in 'bans'
+        rows = cur.execute("""
+            SELECT j.name,
+                   (SELECT COUNT(*) FROM bips  b WHERE b.jail = j.name) AS banned,
+                   (SELECT COUNT(*) FROM bans  b WHERE b.jail = j.name) AS total,
+                   (SELECT b.ip FROM bips b WHERE b.jail = j.name ORDER BY b.timeofban DESC LIMIT 1) AS last_ip,
+                   (SELECT MAX(b.timeofban) FROM bips b WHERE b.jail = j.name) AS last_time
+            FROM jails j
+            ORDER BY j.name
+        """).fetchall()
+        con.close()
+        jails = [
+            {"name": r[0], "banned": r[1] or 0, "total": r[2] or 0,
+             "last_ip": r[3], "last_time": r[4]}
+            for r in rows
+        ]
+        return {
+            "jails": jails,
+            "available": True,
+            "total_banned": sum(j["banned"] for j in jails),
+            "total_bans":   sum(j["total"] for j in jails),
+        }
+    except Exception as e:
+        return {"jails": [], "available": False, "warning": f"Could not read fail2ban db: {e}"}
+
+
+_ACCESS_RE = re.compile(
+    r'^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) (\S+) [^"]*" (\d{3}) (\d+|-)'
+)
+
+
+@app.get("/api/dashboard/traffic")
+def dashboard_traffic(lines: int = 8000):
+    if not ACCESS_LOG.exists():
+        return {"available": False, "warning": "nginx access.log not found"}
+
+    # Tail up to `lines` lines (cap bytes for safety)
+    cap = 8 * 1024 * 1024
+    size = ACCESS_LOG.stat().st_size
+    with ACCESS_LOG.open("rb") as f:
+        if size > cap:
+            f.seek(size - cap)
+            f.readline()  # discard partial
+        raw = f.read().decode("utf-8", errors="replace")
+    log_lines = raw.splitlines()[-lines:]
+
+    status_classes = Counter()
+    paths = Counter()
+    ips = Counter()
+    per_hour = Counter()
+    total = 0
+
+    for ln in log_lines:
+        m = _ACCESS_RE.match(ln)
+        if not m:
+            continue
+        ip, tstr, method, path, status, _bytes = m.groups()
+        total += 1
+        status_classes[f"{status[0]}xx"] += 1
+        # strip query string for grouping
+        paths[path.split("?", 1)[0]] += 1
+        ips[ip] += 1
+        # time bucket: "10/Oct/2025:13" → hour
+        hour = tstr.split()[0].rsplit(":", 2)[0] if ":" in tstr else tstr
+        per_hour[hour] += 1
+
+    # GeoIP (only if both lib + db available)
+    countries = []
+    geoip_available = maxminddb is not None and GEOIP_DB.exists()
+    if geoip_available:
+        try:
+            reader = maxminddb.open_database(str(GEOIP_DB))
+            cc = Counter()
+            for ip, n in ips.items():
+                try:
+                    rec = reader.get(ip)
+                    name = (rec or {}).get("country", {}).get("names", {}).get("en") if rec else None
+                    if name:
+                        cc[name] += n
+                except Exception:
+                    continue
+            reader.close()
+            countries = [{"country": c, "count": n} for c, n in cc.most_common(10)]
+        except Exception:
+            geoip_available = False
+
+    # ordered hourly buckets (last 24)
+    hourly = [{"hour": h, "count": per_hour[h]} for h in sorted(per_hour)][-24:]
+
+    return {
+        "available": True,
+        "total": total,
+        "status_classes": dict(status_classes),
+        "top_paths": [{"path": p, "count": n} for p, n in paths.most_common(10)],
+        "top_ips":   [{"ip": i, "count": n} for i, n in ips.most_common(10)],
+        "hourly": hourly,
+        "geoip_available": geoip_available,
+        "countries": countries,
+    }
+
+
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/health")
@@ -837,6 +1104,10 @@ def health():
         "site_conf_dir_exists": SITE_CONF_DIR.exists(),
         "docker_available": docker_sdk is not None,
         "swag_container": SWAG_CONTAINER,
+        "fail2ban_db": FAIL2BAN_DB.exists(),
+        "certs_dir": LETSENCRYPT_DIR.exists(),
+        "access_log": ACCESS_LOG.exists(),
+        "geoip_available": maxminddb is not None and GEOIP_DB.exists(),
     }
 
 
