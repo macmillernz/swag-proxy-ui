@@ -357,40 +357,18 @@ def update_proxy_host_content(name: str, body: ConfigFileUpdate):
 
 @app.delete("/api/proxy-hosts/{name}", status_code=204)
 def delete_proxy_host(name: str):
+    """Delete the active .conf. Any .conf.sample template is left in place,
+    so a host enabled from a sample reverts to that sample on delete."""
     result = find_conf(name)
     if not result:
         raise HTTPException(404, detail=f"Proxy host '{name}' not found")
-    # Remove every variant (.conf, .conf.disabled, .conf.sample) so nothing is orphaned
-    for suffix, *_ in CONF_SUFFIXES:
-        variant = PROXY_CONF_DIR / f"{name}{suffix}"
-        if variant.exists():
-            variant.unlink()
-
-
-@app.post("/api/proxy-hosts/{name}/toggle")
-def toggle_proxy_host(name: str):
-    result = find_conf(name)
-    if not result:
-        raise HTTPException(404, detail=f"Proxy host '{name}' not found")
-    path, type_, enabled, is_sample = result
-    if is_sample:
-        raise HTTPException(400, detail="Use enable-sample to activate a sample file")
-    if enabled:
-        # Disable → turn the active conf into a sample.
-        # Drop any pre-existing sample (e.g. SWAG's shipped template) first.
-        sample = PROXY_CONF_DIR / f"{name}.{type_}.conf.sample"
-        if sample.exists():
-            sample.unlink()
-        path.rename(sample)
-    else:
-        # Legacy .conf.disabled → re-enable.
-        path.rename(PROXY_CONF_DIR / f"{name}.{type_}.conf")
-    return {"name": name, "enabled": not enabled}
+    result[0].unlink()
 
 
 @app.post("/api/proxy-hosts/{name}/enable-sample")
 def enable_sample(name: str):
-    """Copy a .conf.sample → .conf and return its content for the editor."""
+    """Duplicate {name}.{type}.conf.sample → {name}.{type}.conf and return its
+    content for the editor. The sample template is kept."""
     result = find_conf(name)
     if not result:
         raise HTTPException(404, detail=f"Proxy host '{name}' not found")

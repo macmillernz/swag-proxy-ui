@@ -107,17 +107,6 @@ export default function App() {
     showToast(`${editorHost.name} saved`)
   }
 
-  // ── Toggle enable/disable ──────────────────────────────────────────────────
-
-  const handleToggle = async (name) => {
-    const res = await fetch(`${API}/api/proxy-hosts/${name}/toggle`, { method: 'POST' })
-    if (res.ok) {
-      await fetchHosts()
-      setPendingReload(true)
-      showToast('Status updated')
-    }
-  }
-
   // ── Delete ─────────────────────────────────────────────────────────────────
 
   const handleDelete = async () => {
@@ -283,7 +272,6 @@ export default function App() {
                 hosts={search ? hosts.filter(h => h.name.toLowerCase().includes(search.toLowerCase())) : hosts}
                 loading={loading}
                 onEdit={openEdit}
-                onToggle={handleToggle}
                 onDelete={name => setDeleteTarget(name)}
                 onEnableSample={handleEnableSample}
               />
